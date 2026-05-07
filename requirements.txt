@@ -1,6 +1,6 @@
 requests==2.31.0
 pandas==2.1.4
-supabase==2.3.4
+supabase==2.9.1
 python-dotenv==1.0.0
 tenacity==8.2.3
 pytz==2024.1

@@ -9,6 +9,7 @@ NSE protects its JSON APIs with a browser-fingerprint check:
 We re-warm the session every 25 requests to avoid 401/403 responses.
 """
 
+import os
 import time
 import logging
 from typing import Any
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 _WARM_UP_URLS = [
     f"{NSE_BASE_URL}/",
-    f"{NSE_BASE_URL}/market-data/all-reports-derivatives",
+    f"{NSE_BASE_URL}/market-data/all-reports-equities",
     f"{NSE_BASE_URL}/market-data/securities-available-for-trading",
 ]
 
@@ -39,6 +40,10 @@ class NSESession:
     def __init__(self):
         self._session = requests.Session()
         self._session.headers.update(NSE_HEADERS)
+        proxy_url = os.environ.get("NSE_PROXY_URL")
+        if proxy_url:
+            self._session.proxies.update({"http": proxy_url, "https": proxy_url})
+            logger.info("NSE session using proxy")
         self._request_count = 0
         self._warm_up()
 
