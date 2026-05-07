@@ -19,7 +19,7 @@ from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
+    retry_if_exception,
     before_sleep_log,
 )
 
@@ -34,6 +34,14 @@ _WARM_UP_URLS = [
 ]
 
 SESSION_REFRESH_EVERY = 25
+
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    if isinstance(exc, requests.HTTPError):
+        return exc.response is not None and exc.response.status_code in _RETRYABLE_STATUS
+    return isinstance(exc, (requests.ConnectionError, requests.Timeout))
 
 
 class NSESession:
@@ -57,7 +65,7 @@ class NSESession:
                 logger.warning("Warm-up request failed for %s: %s", url, exc)
 
     @retry(
-        retry=retry_if_exception_type((requests.HTTPError, requests.ConnectionError, requests.Timeout)),
+        retry=retry_if_exception(_is_retryable),
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=2, min=2, max=30),
         before_sleep=before_sleep_log(logger, logging.WARNING),
@@ -82,4 +90,9 @@ class NSESession:
 
     def get_json(self, url: str, **kwargs) -> Any:
         resp = self.get(url, **kwargs)
+        if not resp.content or resp.content[:1] not in (b"{", b"["):
+            raise ValueError(
+                f"Non-JSON response from {url} "
+                f"(status={resp.status_code}, body={resp.text[:120]!r})"
+            )
         return resp.json()
