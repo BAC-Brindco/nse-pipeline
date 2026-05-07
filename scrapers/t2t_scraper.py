@@ -42,6 +42,8 @@ def _parse_csv(df: pd.DataFrame, scrape_date: str) -> list[dict]:
             "date_of_addition": clean_date(str(row.get("DATE OF LISTING", ""))),
             "date_of_removal":  None,
             "remarks":          None,
+            "data_source":      "archive_csv",
+            "source_url":       _EQUITY_LIST_URL,
             "scrape_date":      scrape_date,
         })
     return records

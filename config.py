@@ -25,7 +25,11 @@ NSE_HEADERS = {
     ),
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
+    # Note: br (Brotli) is intentionally excluded for the requests fallback
+    # path — `requests` doesn't auto-decompress Brotli without the `brotli`
+    # package and used to silently return garbage. curl_cffi (the primary
+    # backend) handles brotli natively when impersonating Chrome.
+    "Accept-Encoding": "gzip, deflate",
     "Referer": "https://www.nseindia.com/",
     "X-Requested-With": "XMLHttpRequest",
     "Connection": "keep-alive",
@@ -39,8 +43,8 @@ NSE_HEADERS = {
 
 # Historical backfill start dates (conservative safe starts)
 BACKFILL_START = {
-    "bulk_deals":  "2002-01-01",
-    "block_deals": "2007-01-01",
+    "bulk_deals":  "2009-09-01",   # SEBI bulk deal reporting regs effective ~Sep 2009
+    "block_deals": "2010-01-01",   # NSE block deal window introduced ~2010
     "asm":         "2013-01-01",
     "gsm":         "2016-06-01",
     # t2t has no historical archive; EQUITY_L.csv is always current state only

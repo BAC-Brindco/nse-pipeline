@@ -54,6 +54,8 @@ def _parse_record(row: dict, scrape_date: str) -> dict:
         "date_of_addition": _parse_gsm_date(row.get("gsmTime")),
         "date_of_removal":  None,
         "remarks":          clean_str(row.get("survDesc")),
+        "data_source":      "snapshot",
+        "source_url":       _GSM_URL,
         "scrape_date":      scrape_date,
     }
 

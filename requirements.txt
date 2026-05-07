@@ -1,4 +1,6 @@
 requests==2.31.0
+curl_cffi==0.7.4
+brotli==1.1.0
 pandas==2.1.4
 supabase==2.9.1
 python-dotenv==1.0.0

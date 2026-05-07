@@ -43,6 +43,8 @@ def _parse_record(row: dict, asm_type: str, scrape_date: str) -> dict:
         "date_of_removal":  None,
         "reason":           clean_str(row.get("survCode")),
         "remarks":          clean_str(row.get("survDesc")),
+        "data_source":      "snapshot",
+        "source_url":       _ASM_URL,
         "scrape_date":      scrape_date,
     }
 

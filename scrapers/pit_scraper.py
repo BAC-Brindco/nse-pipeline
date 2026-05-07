@@ -4,7 +4,7 @@ PIT (Prohibition of Insider Trading) Disclosures scraper.
 NSE hosts SEBI PIT / SAST (Substantial Acquisition of Shares & Takeovers)
 disclosures filed by promoters and insiders.
 
-API (date-range pagination, max ~7-day windows recommended):
+API (range pagination, 90-day windows):
   https://www.nseindia.com/api/corporates-pit-gg?index=equities
   https://www.nseindia.com/api/corporates-pit-gg?index=sme
   https://www.nseindia.com/api/corporates-pit-gg?index=invitsreits
@@ -19,7 +19,7 @@ import logging
 from datetime import date, timedelta
 
 from scrapers.nse_session import NSESession
-from database.client import bulk_upsert, RunLogger
+from database.client import bulk_upsert, RunLogger, get_checkpoint, set_checkpoint
 from utils.helpers import clean_str, clean_date, clean_numeric, buy_sell_flag, today_ist
 from config import BACKFILL_START
 
@@ -27,14 +27,14 @@ logger = logging.getLogger(__name__)
 
 _PIT_URL = "https://www.nseindia.com/api/corporates-pit-gg"
 _SEGMENTS = ("equities", "sme", "invitsreits")
-_WINDOW_DAYS = 7
+_WINDOW_DAYS = 90  # widened from 30; NSE PIT API tolerates quarterly windows
 
 
 def _api_date(d: date) -> str:
     return d.strftime("%d-%m-%Y")
 
 
-def _parse_pit_record(row: dict, segment: str, scrape_date: str) -> dict:
+def _parse_pit_record(row: dict, segment: str, scrape_date: str, source_url: str) -> dict:
     return {
         "symbol":               clean_str(row.get("symbol") or row.get("Symbol")),
         "company_name":         clean_str(row.get("company") or row.get("companyName") or row.get("issuerName")),
@@ -56,19 +56,22 @@ def _parse_pit_record(row: dict, segment: str, scrape_date: str) -> dict:
         "exchange":             clean_str(row.get("exchange") or "NSE"),
         "segment":              segment,
         "remarks":              clean_str(row.get("remarks") or row.get("Remarks")),
+        "data_source":          "historical_api",
+        "source_url":           source_url,
         "scrape_date":          scrape_date,
     }
 
 
-def _fetch_window(session: NSESession, segment: str, from_dt: date, to_dt: date) -> list[dict]:
+def _fetch_window(session: NSESession, segment: str, from_dt: date, to_dt: date) -> tuple[list[dict], str]:
     params = {
         "index":     segment,
         "from_date": _api_date(from_dt),
         "to_date":   _api_date(to_dt),
     }
+    url_with_params = f"{_PIT_URL}?index={segment}&from_date={_api_date(from_dt)}&to_date={_api_date(to_dt)}"
     payload = session.get_json(_PIT_URL, params=params)
     raw = payload.get("data", payload) if isinstance(payload, dict) else payload
-    return raw if isinstance(raw, list) else []
+    return (raw if isinstance(raw, list) else [], url_with_params)
 
 
 def scrape_pit_daily(session: NSESession | None = None) -> dict:
@@ -81,8 +84,8 @@ def scrape_pit_daily(session: NSESession | None = None) -> dict:
     with RunLogger("pit", scrape_date) as run:
         for segment in _SEGMENTS:
             try:
-                raw_rows = _fetch_window(session, segment, today, today)
-                records = [_parse_pit_record(r, segment, scrape_date) for r in raw_rows]
+                raw_rows, src = _fetch_window(session, segment, today, today)
+                records = [_parse_pit_record(r, segment, scrape_date, src) for r in raw_rows]
                 records = [r for r in records if r["symbol"]]
                 total_fetched += len(records)
 
@@ -104,34 +107,50 @@ def scrape_pit_historical(
     session: NSESession | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    resume: bool = True,
 ) -> dict:
     session = session or NSESession()
     scrape_date = today_ist()
-    start = date.fromisoformat(start_date or BACKFILL_START["pit"])
+
+    if resume and start_date is None:
+        ck = get_checkpoint("pit")
+        if ck:
+            start = ck + timedelta(days=1)
+            logger.info("Resuming pit backfill from checkpoint %s", start)
+        else:
+            start = date.fromisoformat(BACKFILL_START["pit"])
+    else:
+        start = date.fromisoformat(start_date or BACKFILL_START["pit"])
+
     end = date.fromisoformat(end_date or scrape_date)
+    if start > end:
+        logger.info("pit: nothing to backfill (start %s > end %s)", start, end)
+        return {"fetched": 0, "upserted": 0}
 
     total_fetched = total_upserted = 0
 
-    for segment in _SEGMENTS:
-        cursor = start
-        while cursor <= end:
-            window_end = min(cursor + timedelta(days=_WINDOW_DAYS - 1), end)
+    cursor = start
+    while cursor <= end:
+        window_end = min(cursor + timedelta(days=_WINDOW_DAYS - 1), end)
+        window_records: list[dict] = []
+
+        for segment in _SEGMENTS:
             logger.info("PIT [%s] window %s → %s", segment, cursor, window_end)
-
             try:
-                raw_rows = _fetch_window(session, segment, cursor, window_end)
-                records = [_parse_pit_record(r, segment, scrape_date) for r in raw_rows]
+                raw_rows, src = _fetch_window(session, segment, cursor, window_end)
+                records = [_parse_pit_record(r, segment, scrape_date, src) for r in raw_rows]
                 records = [r for r in records if r["symbol"]]
-                total_fetched += len(records)
-
-                if records:
-                    n = bulk_upsert("pit_disclosures", records)
-                    total_upserted += n
-
+                window_records.extend(records)
             except Exception as exc:  # noqa: BLE001
                 logger.error("PIT [%s] window %s failed: %s", segment, cursor, exc)
 
-            cursor = window_end + timedelta(days=1)
+        total_fetched += len(window_records)
+        if window_records:
+            n = bulk_upsert("pit_disclosures", window_records)
+            total_upserted += n
 
-    logger.info("PIT historical: %d fetched, %d upserted", total_fetched, total_upserted)
+        set_checkpoint("pit", window_end, rows_added=total_upserted)
+        cursor = window_end + timedelta(days=1)
+
+    logger.info("PIT historical done: %d fetched, %d upserted", total_fetched, total_upserted)
     return {"fetched": total_fetched, "upserted": total_upserted}

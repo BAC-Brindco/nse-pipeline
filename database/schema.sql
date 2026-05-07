@@ -195,3 +195,53 @@ CREATE TABLE IF NOT EXISTS scrape_run_log (
     scrape_date     DATE         NOT NULL DEFAULT CURRENT_DATE,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+
+-- ─────────────────────────────────────────────
+-- NSE Trading Holidays
+-- Populated daily from /api/holiday-master?type=trading
+-- Used by utils.helpers.is_trading_day() to skip non-trading days
+-- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS nse_trading_holidays (
+    id              BIGSERIAL    PRIMARY KEY,
+    holiday_date    DATE         NOT NULL,
+    segment         VARCHAR(10)  NOT NULL,   -- 'CM' (cash) | 'FO' | 'CD' | 'SLBS'
+    description     TEXT,
+    weekday         VARCHAR(20),
+    scrape_date     DATE         NOT NULL DEFAULT CURRENT_DATE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    CONSTRAINT holidays_unique UNIQUE (holiday_date, segment)
+);
+CREATE INDEX IF NOT EXISTS idx_holidays_date ON nse_trading_holidays (holiday_date);
+
+-- ─────────────────────────────────────────────
+-- Backfill Checkpoint
+-- Tracks the last successfully-completed date per dataset so backfills
+-- can resume mid-run without re-fetching already-stored windows.
+-- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS backfill_checkpoint (
+    dataset             VARCHAR(50)  PRIMARY KEY,
+    last_completed_date DATE         NOT NULL,
+    rows_total          BIGINT       DEFAULT 0,
+    last_run_id         UUID,
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+-- ─────────────────────────────────────────────
+-- Provenance columns (data_source + source_url)
+-- Added across every fact table so the desk can reconcile divergences
+-- between snapshot vs archive vs historical-API rows.
+-- ─────────────────────────────────────────────
+ALTER TABLE asm_list         ADD COLUMN IF NOT EXISTS data_source VARCHAR(30);
+ALTER TABLE asm_list         ADD COLUMN IF NOT EXISTS source_url  TEXT;
+ALTER TABLE gsm_list         ADD COLUMN IF NOT EXISTS data_source VARCHAR(30);
+ALTER TABLE gsm_list         ADD COLUMN IF NOT EXISTS source_url  TEXT;
+ALTER TABLE t2t_list         ADD COLUMN IF NOT EXISTS data_source VARCHAR(30);
+ALTER TABLE t2t_list         ADD COLUMN IF NOT EXISTS source_url  TEXT;
+ALTER TABLE pit_disclosures  ADD COLUMN IF NOT EXISTS data_source VARCHAR(30);
+ALTER TABLE pit_disclosures  ADD COLUMN IF NOT EXISTS source_url  TEXT;
+ALTER TABLE bulk_deals       ADD COLUMN IF NOT EXISTS data_source VARCHAR(30);
+ALTER TABLE bulk_deals       ADD COLUMN IF NOT EXISTS source_url  TEXT;
+ALTER TABLE block_deals      ADD COLUMN IF NOT EXISTS data_source VARCHAR(30);
+ALTER TABLE block_deals      ADD COLUMN IF NOT EXISTS source_url  TEXT;
+ALTER TABLE short_deals      ADD COLUMN IF NOT EXISTS data_source VARCHAR(30);
+ALTER TABLE short_deals      ADD COLUMN IF NOT EXISTS source_url  TEXT;

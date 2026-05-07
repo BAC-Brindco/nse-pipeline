@@ -19,6 +19,7 @@ from scrapers.pit_scraper import scrape_pit_daily
 from scrapers.bulk_deals_scraper import scrape_bulk_deals_daily
 from scrapers.block_deals_scraper import scrape_block_deals_daily
 from scrapers.short_deals_scraper import scrape_short_deals_daily
+from scrapers.holidays_scraper import scrape_holidays
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,6 +29,7 @@ logging.basicConfig(
 logger = logging.getLogger("nse.daily")
 
 _DATASETS = {
+    "holidays":    scrape_holidays,   # refresh trading-day calendar first
     "asm":         scrape_asm,
     "gsm":         scrape_gsm,
     "t2t":         scrape_t2t,
@@ -69,7 +71,7 @@ def _parse_args():
     parser.add_argument(
         "--datasets", nargs="*",
         choices=list(_DATASETS.keys()),
-        help="Specific datasets to scrape (default: all)",
+        help="Specific datasets to scrape (default: all, in declared order)",
     )
     return parser.parse_args()
 

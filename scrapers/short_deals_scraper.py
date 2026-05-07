@@ -26,6 +26,8 @@ def _parse_record(row: dict, scrape_date: str) -> dict:
         "security_name": clean_str(row.get("name")),
         "quantity":      clean_int(row.get("qty")),
         "exchange":      "NSE",
+        "data_source":   "snapshot",
+        "source_url":    _SNAPSHOT_URL,
         "scrape_date":   scrape_date,
     }
 

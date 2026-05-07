@@ -1,10 +1,11 @@
 """
-Supabase client wrapper with upsert helpers and run-log tracking.
+Supabase client wrapper with upsert helpers, run-log tracking,
+and backfill checkpointing.
 """
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import Any
 
 from supabase import create_client, Client
@@ -21,6 +22,51 @@ def get_client() -> Client:
     if _client is None:
         _client = create_client(SUPABASE_URL, SUPABASE_KEY)
     return _client
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backfill checkpoint helpers
+#
+# A backfill that completes window [W1] but crashes mid-[W2] should restart
+# from W2 on the next run, not from BACKFILL_START. We update the checkpoint
+# only after a window upserts successfully — if the process dies, we'll just
+# re-fetch the in-flight window (idempotent thanks to upserts).
+# ─────────────────────────────────────────────────────────────────────────────
+def get_checkpoint(dataset: str) -> date | None:
+    try:
+        resp = (
+            get_client()
+            .table("backfill_checkpoint")
+            .select("last_completed_date")
+            .eq("dataset", dataset)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows or not rows[0].get("last_completed_date"):
+            return None
+        return date.fromisoformat(rows[0]["last_completed_date"])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("get_checkpoint(%s) failed: %s", dataset, exc)
+        return None
+
+
+def set_checkpoint(dataset: str, last_completed_date: date, rows_added: int = 0,
+                   run_id: str | None = None) -> None:
+    try:
+        # Atomically advance: only move forward, never backward.
+        existing = get_checkpoint(dataset)
+        if existing and existing >= last_completed_date:
+            return
+        get_client().table("backfill_checkpoint").upsert({
+            "dataset": dataset,
+            "last_completed_date": last_completed_date.isoformat(),
+            "rows_total": rows_added,
+            "last_run_id": run_id,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="dataset").execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("set_checkpoint(%s, %s) failed: %s", dataset, last_completed_date, exc)
 
 
 def upsert(table: str, records: list[dict], conflict_columns: list[str] | None = None) -> int:
