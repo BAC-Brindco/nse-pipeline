@@ -156,6 +156,27 @@ CREATE INDEX IF NOT EXISTS idx_block_client    ON block_deals (client_name);
 CREATE INDEX IF NOT EXISTS idx_block_scrape_dt ON block_deals (scrape_date);
 
 -- ─────────────────────────────────────────────
+-- Short Selling Reports
+-- Daily short positions reported by members
+-- (SHORT_DEALS_DATA from snapshot-capital-market-largedeal)
+-- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS short_deals (
+    id                  BIGSERIAL PRIMARY KEY,
+    deal_date           DATE         NOT NULL,
+    symbol              VARCHAR(50)  NOT NULL,
+    security_name       TEXT,
+    quantity            BIGINT,
+    exchange            VARCHAR(10)  NOT NULL DEFAULT 'NSE',
+    scrape_date         DATE         NOT NULL DEFAULT CURRENT_DATE,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    CONSTRAINT short_unique UNIQUE (deal_date, symbol)
+);
+
+CREATE INDEX IF NOT EXISTS idx_short_date      ON short_deals (deal_date);
+CREATE INDEX IF NOT EXISTS idx_short_symbol    ON short_deals (symbol);
+CREATE INDEX IF NOT EXISTS idx_short_scrape_dt ON short_deals (scrape_date);
+
+-- ─────────────────────────────────────────────
 -- Scrape Run Log
 -- Audit trail for every pipeline execution
 -- ─────────────────────────────────────────────

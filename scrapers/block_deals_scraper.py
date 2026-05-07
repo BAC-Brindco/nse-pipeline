@@ -6,10 +6,11 @@ or a minimum value of INR 5 crore, executed in the opening block window
 (08:45–09:00 AM IST) on the exchange.
 
 Sources:
-  Daily API:  https://www.nseindia.com/api/block-deal
-              (params: from_date, to_date in DD-MM-YYYY format)
+  Daily snapshot (shared with bulk/short deals):
+      https://www.nseindia.com/api/snapshot-capital-market-largedeal
+      Returns BLOCK_DEALS_DATA for recent block deals.
 
-  Historical archives:
+  Historical archives (NSE CDN — no session required):
       https://archives.nseindia.com/content/equities/block_deals_{DDMMYYYY}.csv
       https://archives.nseindia.com/content/equities/BLOCK_DEALS_{DD-Mon-YYYY}.csv
 """
@@ -30,7 +31,8 @@ from config import BACKFILL_START, NSE_ARCHIVE_URL
 
 logger = logging.getLogger(__name__)
 
-_BLOCK_API_URL = "https://www.nseindia.com/api/block-deal"
+_SNAPSHOT_URL  = "https://www.nseindia.com/api/snapshot-capital-market-largedeal"
+_BLOCK_API_URL = "https://www.nseindia.com/api/block-deal"  # fallback
 
 
 def _archive_urls(d: date) -> list[str]:
@@ -111,13 +113,29 @@ def _fetch_api(session: NSESession, from_dt: date, to_dt: date, scrape_date: str
     return [_parse_api_row(r, scrape_date) for r in raw]
 
 
+def _parse_snapshot_row(row: dict, scrape_date: str) -> dict:
+    return {
+        "deal_date":     clean_date(row.get("date")),
+        "symbol":        clean_str(row.get("symbol")),
+        "security_name": clean_str(row.get("name")),
+        "client_name":   clean_str(row.get("clientName")),
+        "buy_sell":      buy_sell_flag(row.get("buySell")),
+        "quantity":      clean_int(row.get("qty")),
+        "trade_price":   clean_numeric(row.get("watp")),
+        "exchange":      "NSE",
+        "scrape_date":   scrape_date,
+    }
+
+
 def scrape_block_deals_daily(session: NSESession | None = None) -> dict:
     session = session or NSESession()
     scrape_date = today_ist()
-    today = date.fromisoformat(scrape_date)
 
     with RunLogger("block_deals", scrape_date) as run:
-        records = _fetch_api(session, today, today, scrape_date)
+        payload = session.get_json(_SNAPSHOT_URL)
+        raw_rows = payload.get("BLOCK_DEALS_DATA", []) if isinstance(payload, dict) else []
+
+        records = [_parse_snapshot_row(r, scrape_date) for r in raw_rows]
         records = [r for r in records if r["symbol"] and r["client_name"]]
         run.set_fetched(len(records))
 

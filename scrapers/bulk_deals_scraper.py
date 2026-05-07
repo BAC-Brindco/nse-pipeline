@@ -5,14 +5,15 @@ A bulk deal occurs when a single client trades >= 0.5% of the total listed
 shares of a company in a single day on any exchange.
 
 Sources:
-  Daily API:  https://www.nseindia.com/api/bulk-deal-advance
-              (params: from_date, to_date in DD-MM-YYYY format)
+  Daily snapshot (bulk + block + short in one call):
+      https://www.nseindia.com/api/snapshot-capital-market-largedeal
+      Returns BULK_DEALS_DATA, BLOCK_DEALS_DATA, SHORT_DEALS_DATA for today.
 
-  Historical archives (NSE CDN):
+  Historical archives (NSE CDN — no session required):
       https://archives.nseindia.com/content/equities/BULK_DEALS_{DD-Mon-YYYY}.csv
       https://archives.nseindia.com/content/equities/bulk_deals_{DDMMYYYY}.csv
 
-  We try the archive first for backfill; fall back to API for recent dates.
+  We use the snapshot for daily runs and the archive CDN for backfill.
 """
 
 import io
@@ -32,7 +33,8 @@ from config import BACKFILL_START, NSE_ARCHIVE_URL, REQUEST_DELAY_SECONDS
 
 logger = logging.getLogger(__name__)
 
-_BULK_API_URL = "https://www.nseindia.com/api/bulk-deal-advance"
+_SNAPSHOT_URL  = "https://www.nseindia.com/api/snapshot-capital-market-largedeal"
+_BULK_API_URL  = "https://www.nseindia.com/api/bulk-deal-advance"  # fallback
 
 
 def _archive_urls(d: date) -> list[str]:
@@ -117,13 +119,30 @@ def _fetch_api(session: NSESession, from_dt: date, to_dt: date, scrape_date: str
     return [_parse_api_row(r, scrape_date) for r in raw]
 
 
+def _parse_snapshot_row(row: dict, scrape_date: str) -> dict:
+    return {
+        "deal_date":     clean_date(row.get("date")),
+        "symbol":        clean_str(row.get("symbol")),
+        "security_name": clean_str(row.get("name")),
+        "client_name":   clean_str(row.get("clientName")),
+        "buy_sell":      buy_sell_flag(row.get("buySell")),
+        "quantity":      clean_int(row.get("qty")),
+        "avg_price":     clean_numeric(row.get("watp")),
+        "exchange":      "NSE",
+        "remarks":       clean_str(row.get("remarks")),
+        "scrape_date":   scrape_date,
+    }
+
+
 def scrape_bulk_deals_daily(session: NSESession | None = None) -> dict:
     session = session or NSESession()
     scrape_date = today_ist()
-    today = date.fromisoformat(scrape_date)
 
     with RunLogger("bulk_deals", scrape_date) as run:
-        records = _fetch_api(session, today, today, scrape_date)
+        payload = session.get_json(_SNAPSHOT_URL)
+        raw_rows = payload.get("BULK_DEALS_DATA", []) if isinstance(payload, dict) else []
+
+        records = [_parse_snapshot_row(r, scrape_date) for r in raw_rows]
         records = [r for r in records if r["symbol"] and r["client_name"]]
         run.set_fetched(len(records))
 

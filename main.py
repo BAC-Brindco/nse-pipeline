@@ -18,6 +18,7 @@ from scrapers.t2t_scraper import scrape_t2t
 from scrapers.pit_scraper import scrape_pit_daily
 from scrapers.bulk_deals_scraper import scrape_bulk_deals_daily
 from scrapers.block_deals_scraper import scrape_block_deals_daily
+from scrapers.short_deals_scraper import scrape_short_deals_daily
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,8 +32,9 @@ _DATASETS = {
     "gsm":         scrape_gsm,
     "t2t":         scrape_t2t,
     "pit":         scrape_pit_daily,
-    "bulk_deals":  scrape_bulk_deals_daily,
-    "block_deals": scrape_block_deals_daily,
+    "bulk_deals":   scrape_bulk_deals_daily,
+    "block_deals":  scrape_block_deals_daily,
+    "short_deals":  scrape_short_deals_daily,
 }
 
 
