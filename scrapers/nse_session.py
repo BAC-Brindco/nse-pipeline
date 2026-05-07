@@ -112,8 +112,11 @@ class NSESession:
         return sess
 
     def _have_required_cookies(self) -> bool:
-        names = {c.name for c in self._session.cookies}
-        return any(name in names for name in _REQUIRED_COOKIES)
+        # curl_cffi's Cookies iterates over names (strings); requests'
+        # RequestsCookieJar iterates over Cookie objects. Both backends
+        # support `name in cookies` membership testing — use that.
+        cookies = self._session.cookies
+        return any(name in cookies for name in _REQUIRED_COOKIES)
 
     def _warm_up(self, strict: bool = False):
         """
@@ -139,9 +142,13 @@ class NSESession:
                     logger.debug("Warmup %s failed: %s", url, exc)
 
             if self._have_required_cookies():
+                try:
+                    n_cookies = len(self._session.cookies)
+                except TypeError:
+                    n_cookies = sum(1 for _ in self._session.cookies)
                 logger.info(
                     "NSE session warmed up (attempt %d): %d cookies set",
-                    attempt, len(list(self._session.cookies)),
+                    attempt, n_cookies,
                 )
                 return
             time.sleep(2 ** attempt)  # exponential backoff between attempts
