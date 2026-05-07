@@ -43,6 +43,6 @@ BACKFILL_START = {
     "block_deals": "2007-01-01",
     "asm":         "2013-01-01",
     "gsm":         "2016-06-01",
-    "t2t":         "2010-01-01",
+    # t2t has no historical archive; EQUITY_L.csv is always current state only
     "pit":         "2015-05-15",   # SEBI PIT Regulations 2015 effective date
 }

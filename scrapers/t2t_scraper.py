@@ -4,15 +4,19 @@ T2T (Trade-to-Trade / BE series) scraper.
 Securities in the T2T segment must be compulsorily settled on a
 gross basis (delivery only) — intraday squaring-off is not permitted.
 
-Primary source:
-  https://www.nseindia.com/api/trade-info?index=T2T
-  (falls back to: https://www.nseindia.com/api/reportsmf?index=T2Tsecurities)
+Source:
+  https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv
+  Full equity listing file; T2T stocks have SERIES = 'BE'.
+  Static CDN file — no session or cookies required.
 
-NSE also publishes a downloadable circular-based list; we try both endpoints
-and take whichever responds with a valid list.
+Note: DATE OF LISTING is used as date_of_addition (best stable proxy
+available; the actual T2T re-classification date is not in this file).
 """
 
+import io
 import logging
+
+import pandas as pd
 
 from scrapers.nse_session import NSESession
 from database.client import bulk_upsert, RunLogger
@@ -20,47 +24,43 @@ from utils.helpers import clean_str, clean_date, today_ist
 
 logger = logging.getLogger(__name__)
 
-_T2T_ENDPOINTS = [
-    "https://www.nseindia.com/api/trade-info?index=T2T",
-    "https://www.nseindia.com/api/reportsmf?index=T2Tsecurities",
-]
+_EQUITY_LIST_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
 
 
-def _parse_t2t_record(row: dict, scrape_date: str) -> dict:
-    return {
-        "symbol":           clean_str(row.get("symbol") or row.get("Symbol") or row.get("SYMBOL")),
-        "series":           clean_str(row.get("series") or row.get("Series") or "BE"),
-        "company_name":     clean_str(row.get("secDesc") or row.get("companyName") or row.get("NAME OF SECURITY")),
-        "isin":             clean_str(row.get("isin") or row.get("ISIN")),
-        "date_of_addition": clean_date(row.get("addDate") or row.get("dateOfAddition") or row.get("DATE")),
-        "date_of_removal":  clean_date(row.get("removeDate") or row.get("dateOfRemoval")),
-        "remarks":          clean_str(row.get("remarks") or row.get("Remarks") or row.get("REASON")),
-        "scrape_date":      scrape_date,
-    }
+def _parse_csv(df: pd.DataFrame, scrape_date: str) -> list[dict]:
+    df.columns = [c.strip() for c in df.columns]
+
+    be_df = df[df["SERIES"].str.strip() == "BE"].copy()
+
+    records = []
+    for _, row in be_df.iterrows():
+        records.append({
+            "symbol":           clean_str(str(row.get("SYMBOL", ""))),
+            "series":           "BE",
+            "company_name":     clean_str(str(row.get("NAME OF COMPANY", ""))),
+            "isin":             clean_str(str(row.get("ISIN NUMBER", ""))),
+            "date_of_addition": clean_date(str(row.get("DATE OF LISTING", ""))),
+            "date_of_removal":  None,
+            "remarks":          None,
+            "scrape_date":      scrape_date,
+        })
+    return records
 
 
 def scrape_t2t(session: NSESession | None = None) -> dict:
     session = session or NSESession()
     scrape_date = today_ist()
 
-    raw_rows: list | None = None
-    for url in _T2T_ENDPOINTS:
-        try:
-            payload = session.get_json(url)
-            candidate = payload.get("data", payload) if isinstance(payload, dict) else payload
-            if isinstance(candidate, list) and len(candidate) > 0:
-                raw_rows = candidate
-                logger.info("T2T data from %s (%d rows)", url, len(raw_rows))
-                break
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("T2T endpoint %s failed: %s", url, exc)
-
-    if raw_rows is None:
-        logger.error("All T2T endpoints failed")
-        return {"fetched": 0, "upserted": 0}
-
     with RunLogger("t2t", scrape_date) as run:
-        records = [_parse_t2t_record(r, scrape_date) for r in raw_rows]
+        try:
+            resp = session.get(_EQUITY_LIST_URL)
+            df = pd.read_csv(io.StringIO(resp.text))
+        except Exception as exc:
+            logger.error("T2T: failed to fetch equity list CSV: %s", exc)
+            run.fail(str(exc))
+            return {"fetched": 0, "upserted": 0}
+
+        records = _parse_csv(df, scrape_date)
         records = [r for r in records if r["symbol"]]
         run.set_fetched(len(records))
 
@@ -70,5 +70,5 @@ def scrape_t2t(session: NSESession | None = None) -> dict:
             conflict_columns=["symbol", "series", "date_of_addition"],
         )
         run.set_upserted(n)
-        logger.info("T2T: %d records upserted", n)
+        logger.info("T2T: %d BE-series records upserted", n)
         return {"fetched": len(records), "upserted": n}
