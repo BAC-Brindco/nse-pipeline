@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS pit_disclosures (
     date_of_intimation          DATE,
     mode_of_acq                 VARCHAR(100),
     exchange                    VARCHAR(20),
+    segment                     VARCHAR(20) DEFAULT 'equities',  -- equities | sme | invitsreits
     remarks                     TEXT,
     scrape_date                 DATE        NOT NULL DEFAULT CURRENT_DATE,
     created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -104,6 +105,7 @@ CREATE INDEX IF NOT EXISTS idx_pit_symbol      ON pit_disclosures (symbol);
 CREATE INDEX IF NOT EXISTS idx_pit_acq_name    ON pit_disclosures (acquirer_name);
 CREATE INDEX IF NOT EXISTS idx_pit_date_allot  ON pit_disclosures (date_of_allotment);
 CREATE INDEX IF NOT EXISTS idx_pit_scrape_dt   ON pit_disclosures (scrape_date);
+CREATE INDEX IF NOT EXISTS idx_pit_segment     ON pit_disclosures (segment);
 
 -- ─────────────────────────────────────────────
 -- Bulk Deals
