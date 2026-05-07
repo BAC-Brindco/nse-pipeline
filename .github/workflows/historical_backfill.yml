@@ -1,0 +1,73 @@
+name: NSE Historical Backfill
+
+# This workflow is triggered MANUALLY.
+# Run it once after initial setup to seed all historical data.
+# It can also be used to re-backfill a specific date range.
+
+on:
+  workflow_dispatch:
+    inputs:
+      datasets:
+        description: "Space-separated datasets (blank = all): asm gsm t2t pit bulk_deals block_deals"
+        required: false
+        default: ""
+      start_date:
+        description: "Start date YYYY-MM-DD (blank = dataset default)"
+        required: false
+        default: ""
+      end_date:
+        description: "End date YYYY-MM-DD (blank = today)"
+        required: false
+        default: ""
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  backfill:
+    name: Historical backfill
+    runs-on: ubuntu-latest
+    timeout-minutes: 360     # full backfill can take several hours
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build backfill command
+        id: cmd
+        run: |
+          CMD="python historical_backfill.py"
+          if [ -n "${{ github.event.inputs.datasets }}" ]; then
+            CMD="$CMD --datasets ${{ github.event.inputs.datasets }}"
+          fi
+          if [ -n "${{ github.event.inputs.start_date }}" ]; then
+            CMD="$CMD --start ${{ github.event.inputs.start_date }}"
+          fi
+          if [ -n "${{ github.event.inputs.end_date }}" ]; then
+            CMD="$CMD --end ${{ github.event.inputs.end_date }}"
+          fi
+          echo "cmd=$CMD" >> $GITHUB_OUTPUT
+          echo "Running: $CMD"
+
+      - name: Run historical backfill
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: ${{ steps.cmd.outputs.cmd }}
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backfill-logs-${{ github.run_id }}
+          path: "*.log"
+          retention-days: 30

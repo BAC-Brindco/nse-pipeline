@@ -1,0 +1,56 @@
+name: NSE Daily Data Scrape
+
+on:
+  # NSE market closes at 15:30 IST = 10:00 UTC.
+  # We run at 11:00 UTC (16:30 IST) to allow post-close data to publish.
+  schedule:
+    - cron: "0 11 * * 1-5"   # Mon–Fri 11:00 UTC
+
+  # Allow manual trigger with optional dataset selection
+  workflow_dispatch:
+    inputs:
+      datasets:
+        description: "Space-separated datasets (blank = all): asm gsm t2t pit bulk_deals block_deals"
+        required: false
+        default: ""
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  scrape:
+    name: Scrape NSE datasets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run daily scrape
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.datasets }}" ]; then
+            python main.py --datasets ${{ github.event.inputs.datasets }}
+          else
+            python main.py
+          fi
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-logs-${{ github.run_id }}
+          path: "*.log"
+          retention-days: 7
