@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS gsm_list (
     series              VARCHAR(10)  NOT NULL DEFAULT 'EQ',
     company_name        TEXT,
     isin                VARCHAR(20),
-    stage               INTEGER      NOT NULL,   -- 1-6
+    stage               INTEGER      NOT NULL,   -- 1-6 standard; higher values for IBC/special codes
     date_of_addition    DATE,
     date_of_removal     DATE,
     remarks             TEXT,
