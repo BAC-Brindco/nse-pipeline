@@ -49,6 +49,10 @@ _WARM_UP_URLS = [
     f"{NSE_BASE_URL}/",
     f"{NSE_BASE_URL}/option-chain",
     f"{NSE_BASE_URL}/market-data/large-deals",
+    # Historical endpoints (bulk/block) have stricter Akamai challenges that
+    # require a session that has visited the historical-deals UI page first.
+    f"{NSE_BASE_URL}/report-detail/historical-bulk-deals",
+    f"{NSE_BASE_URL}/companies-listing/corporate-filings-insider-trading",
 ]
 
 # Cookies whose presence indicates a successful warmup. If none are set

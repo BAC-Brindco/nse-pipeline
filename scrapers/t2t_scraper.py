@@ -44,6 +44,7 @@ def _parse_csv(df: pd.DataFrame, scrape_date: str) -> list[dict]:
             "remarks":          None,
             "data_source":      "archive_csv",
             "source_url":       _EQUITY_LIST_URL,
+            "raw_payload":      {k: (None if str(v) == "nan" else v) for k, v in row.to_dict().items()},
             "scrape_date":      scrape_date,
         })
     return records
@@ -66,10 +67,13 @@ def scrape_t2t(session: NSESession | None = None) -> dict:
         records = [r for r in records if r["symbol"]]
         run.set_fetched(len(records))
 
+        # Conflict key changed: addition date is the listing date which is
+        # stable per symbol, so dedup on (symbol, series). first_seen / last_seen
+        # are maintained automatically by the t2t_seen_dates trigger.
         n = bulk_upsert(
             "t2t_list",
             records,
-            conflict_columns=["symbol", "series", "date_of_addition"],
+            conflict_columns=["symbol", "series"],
         )
         run.set_upserted(n)
         logger.info("T2T: %d BE-series records upserted", n)

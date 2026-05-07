@@ -49,11 +49,36 @@ def _historical_url(kind: str, from_dt: date, to_dt: date) -> str:
     )
 
 
+class HtmlChallengeError(RuntimeError):
+    """Raised when NSE returns an HTML bot-challenge page instead of JSON.
+    Signals broader auth failure — fallback to archive CDN won't help either."""
+
+
 def fetch_range(session: NSESession, kind: str, from_dt: date, to_dt: date) -> list[dict]:
-    """Fetch a date range from NSE's historical API. Returns raw rows."""
+    """Fetch a date range from NSE's historical API. Returns raw rows.
+
+    Raises HtmlChallengeError if NSE served the bot-challenge HTML page —
+    callers should skip the archive-CDN fallback in that case (cookies
+    aren't authenticated enough for /content/equities/ either).
+    """
     url = _historical_url(kind, from_dt, to_dt)
+    # NSE's Akamai stack on /api/historical/cm/* checks Referer matches
+    # the historical-deals UI page. Without it we get the bot-challenge HTML.
+    headers = {
+        "Referer": "https://www.nseindia.com/report-detail/historical-bulk-deals",
+    }
     try:
-        payload = session.get_json(url)
+        payload = session.get_json(url, headers=headers)
+    except ValueError as exc:
+        # Non-JSON response — most likely the bot-challenge HTML page.
+        msg = str(exc)
+        if "<!DOCTYPE html" in msg or "<html" in msg.lower():
+            raise HtmlChallengeError(
+                f"{kind} historical API blocked by NSE bot challenge"
+            ) from exc
+        logger.warning("Historical %s [%s → %s] non-JSON: %s",
+                       kind, from_dt, to_dt, msg[:200])
+        return []
     except Exception as exc:  # noqa: BLE001
         logger.warning("Historical %s [%s → %s] failed: %s", kind, from_dt, to_dt, exc)
         return []
@@ -114,12 +139,24 @@ def run_historical_backfill(
     total_fetched = total_upserted = 0
 
     cursor = start
+    consecutive_html_blocks = 0
     while cursor <= end:
         window_end = min(cursor + timedelta(days=WINDOW_DAYS - 1), end)
         api_url = _historical_url(api_kind, cursor, window_end)
 
         # ── Range API ────────────────────────────────────────────────────
-        raw_rows = fetch_range(session, api_kind, cursor, window_end)
+        api_blocked_by_html = False
+        try:
+            raw_rows = fetch_range(session, api_kind, cursor, window_end)
+        except HtmlChallengeError as exc:
+            logger.warning("%s window %s → %s: %s — skipping archive fallback",
+                           dataset_key, cursor, window_end, exc)
+            raw_rows = []
+            api_blocked_by_html = True
+            consecutive_html_blocks += 1
+        else:
+            consecutive_html_blocks = 0
+
         records = [parse_api_row(r, scrape_date, api_url) for r in raw_rows]
         records = [r for r in records if r.get("symbol") and r.get("client_name")]
 
@@ -129,22 +166,35 @@ def run_historical_backfill(
             dataset_key, cursor, window_end, len(records), len(api_dates),
         )
 
-        # ── Archive CSV fallback for trading days the API missed ────────
+        # ── Archive CSV fallback ─────────────────────────────────────────
+        # Skip if NSE served HTML — same auth surface, same block. Bails out
+        # of ~270s of futile per-day attempts when bot detection is hot.
         csv_records = []
-        for d in iter_trading_days(cursor, window_end):
-            if d in api_dates:
-                continue
-            df, src_url = fetch_archive_csv(session, d, api_kind)
-            if df is None:
-                continue
-            df.columns = [c.strip().upper() for c in df.columns]
-            for _, row in df.iterrows():
-                rec = parse_csv_row(row, d, scrape_date, src_url or "")
-                if rec.get("symbol") and rec.get("client_name"):
-                    csv_records.append(rec)
+        if not api_blocked_by_html:
+            for d in iter_trading_days(cursor, window_end):
+                if d in api_dates:
+                    continue
+                df, src_url = fetch_archive_csv(session, d, api_kind)
+                if df is None:
+                    continue
+                df.columns = [c.strip().upper() for c in df.columns]
+                for _, row in df.iterrows():
+                    rec = parse_csv_row(row, d, scrape_date, src_url or "")
+                    if rec.get("symbol") and rec.get("client_name"):
+                        csv_records.append(rec)
 
         if csv_records:
             logger.info("%s archive fill: +%d rows", dataset_key, len(csv_records))
+
+        # If we've been blocked for 5 windows in a row, abort — re-warm
+        # and retry-on-cron will likely do better than continuing now.
+        if consecutive_html_blocks >= 5:
+            logger.error(
+                "%s: HTML-blocked for 5 consecutive windows — aborting backfill. "
+                "Re-run after the next holiday/calendar window or with proxy enabled.",
+                dataset_key,
+            )
+            break
 
         all_records = records + csv_records
         total_fetched += len(all_records)

@@ -28,6 +28,7 @@ from scrapers.t2t_scraper import scrape_t2t
 from scrapers.pit_scraper import scrape_pit_historical
 from scrapers.bulk_deals_scraper import scrape_bulk_deals_historical
 from scrapers.block_deals_scraper import scrape_block_deals_historical
+from scrapers.wayback_scraper import scrape_asm_history_from_wayback, scrape_gsm_history_from_wayback
 from config import BACKFILL_START
 
 logging.basicConfig(

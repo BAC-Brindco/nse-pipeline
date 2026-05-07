@@ -49,6 +49,7 @@ def _parse_api_row(row: dict, scrape_date: str, source_url: str) -> dict:
         "remarks":       clean_str(row.get("remarks") or row.get("BD_REMARKS")),
         "data_source":   "historical_api",
         "source_url":    source_url,
+        "raw_payload":   row,
         "scrape_date":   scrape_date,
     }
 
@@ -68,6 +69,7 @@ def _parse_csv_row(row: pd.Series, d: date, scrape_date: str, source_url: str) -
         "remarks":       clean_str(str(row.get("REMARKS", ""))),
         "data_source":   "archive_csv",
         "source_url":    source_url,
+        "raw_payload":   {k: (None if str(v) == "nan" else v) for k, v in row.to_dict().items()},
         "scrape_date":   scrape_date,
     }
 
@@ -85,6 +87,7 @@ def _parse_snapshot_row(row: dict, scrape_date: str) -> dict:
         "remarks":       clean_str(row.get("remarks")),
         "data_source":   "snapshot",
         "source_url":    _SNAPSHOT_URL,
+        "raw_payload":   row,
         "scrape_date":   scrape_date,
     }
 

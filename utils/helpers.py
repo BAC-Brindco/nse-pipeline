@@ -92,17 +92,50 @@ def clean_int(val: str | None) -> int | None:
     return int(f) if f is not None else None
 
 
-def clean_date(val: str | None, formats: list[str] | None = None) -> str | None:
-    if not val or str(val).strip() in ("-", "NA", "N/A", "--", ""):
+def clean_date(val: str | int | float | None, formats: list[str] | None = None) -> str | None:
+    """
+    Parse the wide variety of date formats NSE returns:
+    - DD-Mon-YYYY ("15-Aug-2024")
+    - DD-MM-YYYY  ("15-08-2024")
+    - YYYY-MM-DD  ("2024-08-15")
+    - DD/MM/YYYY  ("15/08/2024")
+    - "15 Aug 2024", "Aug 15, 2024"
+    - ISO with time ("2024-08-15T00:00:00", "2024-08-15 00:00:00",
+                    "2024-08-15T00:00:00.000Z")
+    - Unix epoch seconds or milliseconds
+    Returns ISO YYYY-MM-DD or None.
+    """
+    if val is None:
         return None
-    val = str(val).strip()
+    # Numeric → epoch seconds or millis
+    if isinstance(val, (int, float)):
+        try:
+            ts = float(val)
+            if ts > 1e12:  # ms
+                ts /= 1000.0
+            return datetime.utcfromtimestamp(ts).date().isoformat()
+        except (OSError, OverflowError, ValueError):
+            return None
+    s = str(val).strip()
+    if s in ("-", "NA", "N/A", "--", "", "None", "null"):
+        return None
+    # Strip ISO time component if present
+    if "T" in s or " " in s:
+        head = s.split("T")[0].split(" ")[0]
+        # Try the head as YYYY-MM-DD first (most common ISO case)
+        try:
+            return datetime.strptime(head, "%Y-%m-%d").date().isoformat()
+        except ValueError:
+            pass
     _formats = formats or [
         "%d-%b-%Y", "%d-%m-%Y", "%Y-%m-%d",
         "%d/%m/%Y", "%d %b %Y", "%b %d, %Y",
+        "%d-%B-%Y", "%d %B %Y",  # full month name
+        "%d-%b-%y", "%d/%m/%y",  # 2-digit year
     ]
     for fmt in _formats:
         try:
-            return datetime.strptime(val, fmt).date().isoformat()
+            return datetime.strptime(s, fmt).date().isoformat()
         except ValueError:
             continue
     logger.debug("Could not parse date: %r", val)

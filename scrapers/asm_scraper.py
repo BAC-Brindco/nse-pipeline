@@ -1,8 +1,8 @@
 """
 ASM (Additional Surveillance Measure) scraper.
 
-NSE maintains two ASM lists (short-term and long-term) served together
-from a single endpoint:
+NSE maintains short-term and long-term ASM lists, served together
+from one endpoint:
   https://www.nseindia.com/api/reportASM
 
 Response shape:
@@ -11,8 +11,17 @@ Response shape:
     "longterm":  { "data": [ {...}, ... ] }
   }
 
-Each record contains: symbol, series, companyName, isin,
-asmSurvIndicator (stage), asmTime (date added), survCode, survDesc.
+IMPORTANT — addition-date is unreliable:
+NSE's snapshot does NOT expose the actual date a stock entered ASM.
+The `asmTime` field is a refresh timestamp, not an entry date.
+We therefore:
+  1. Store asmTime in raw_payload (JSONB) and date_of_addition gets
+     parsed only as a best-effort.
+  2. Rely on the BEFORE INSERT/UPDATE trigger `maintain_seen_dates`
+     to track first_seen_date / last_seen_date from daily snapshots —
+     that gives us TRUE entry/exit windows accumulating forward.
+  3. For history older than first daily snapshot, see
+     wayback_scraper.py which reconstructs from web.archive.org.
 """
 
 import logging
@@ -39,13 +48,18 @@ def _parse_record(row: dict, asm_type: str, scrape_date: str) -> dict:
         "isin":             clean_str(row.get("isin")),
         "asm_type":         asm_type,
         "stage":            clean_str(row.get("asmSurvIndicator")),
+        # asmTime is unreliable; record only as best-effort. The trigger on
+        # this table maintains first_seen_date / last_seen_date as the
+        # source of truth for when this stock was on this ASM stage.
         "date_of_addition": clean_date(row.get("asmTime")),
         "date_of_removal":  None,
         "reason":           clean_str(row.get("survCode")),
         "remarks":          clean_str(row.get("survDesc")),
         "data_source":      "snapshot",
         "source_url":       _ASM_URL,
+        "raw_payload":      row,
         "scrape_date":      scrape_date,
+        # first_seen_date / last_seen_date set automatically by trigger
     }
 
 
@@ -72,7 +86,7 @@ def scrape_asm(session: NSESession | None = None) -> dict:
             n = bulk_upsert(
                 "asm_list",
                 records,
-                conflict_columns=["symbol", "series", "asm_type", "date_of_addition"],
+                conflict_columns=["symbol", "series", "asm_type", "stage"],
             )
             totals["upserted"] += n
             logger.info("ASM %s: %d records upserted", asm_type, n)

@@ -28,6 +28,7 @@ def _parse_record(row: dict, scrape_date: str) -> dict:
         "exchange":      "NSE",
         "data_source":   "snapshot",
         "source_url":    _SNAPSHOT_URL,
+        "raw_payload":   row,
         "scrape_date":   scrape_date,
     }
 
