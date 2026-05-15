@@ -1,0 +1,65 @@
+name: NSE Daily Deals Email Report
+
+on:
+  # Target: report lands in inboxes around 09:00 IST T+1.
+  # GHA on this repo lags scheduled runs by ~6h, so we schedule earlier and
+  # fire multiple times. Idempotency is enforced by report_log's UNIQUE
+  # (report_type, report_date) — the first run that claims the slot sends,
+  # the rest exit silently.
+  #
+  # Each run also re-runs the deals scrapers first so the report draws from
+  # the freshest possible data (upserts are idempotent on the deal keys).
+  schedule:
+    - cron: "0 21 * * 1-5"   # T 21:00 UTC / T+1 02:30 IST scheduled — first attempt
+    - cron: "30 22 * * 1-5"  # T 22:30 UTC / T+1 04:00 IST scheduled — second attempt
+    - cron: "0 0 * * 2-6"    # T+1 00:00 UTC / T+1 05:30 IST scheduled — fallback
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  refresh-and-report:
+    name: Refresh deals data and send daily report
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Refresh T-1's deals data before composing the report. Upserts are
+      # idempotent so this is safe even if the daily_scrape workflow has
+      # already populated the rows.
+      - name: Refresh bulk/block/short deals
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python main.py --datasets bulk_deals block_deals short_deals
+
+      - name: Send daily report
+        env:
+          SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:        ${{ secrets.SUPABASE_KEY }}
+          GMAIL_USER:          ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD:  ${{ secrets.GMAIL_APP_PASSWORD }}
+          REPORT_RECIPIENTS:   ${{ secrets.REPORT_RECIPIENTS }}
+          REPORT_SENDER_NAME:  ${{ vars.REPORT_SENDER_NAME || 'BAC Surveillance' }}
+        run: python -m reports.daily_deals_report
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-logs-${{ github.run_id }}
+          path: "*.log"
+          retention-days: 7

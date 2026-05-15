@@ -227,6 +227,25 @@ CREATE TABLE IF NOT EXISTS backfill_checkpoint (
 );
 
 -- ─────────────────────────────────────────────
+-- Report Log
+-- Idempotency table for the daily email report. Multiple cron triggers
+-- race to INSERT a row; the unique constraint ensures only one wins
+-- per (report_type, report_date). Subsequent invocations short-circuit.
+-- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS report_log (
+    id              BIGSERIAL    PRIMARY KEY,
+    report_type     VARCHAR(50)  NOT NULL,
+    report_date     DATE         NOT NULL,
+    status          VARCHAR(20)  NOT NULL,        -- 'pending' | 'sent' | 'failed'
+    recipients      TEXT,
+    error_message   TEXT,
+    claimed_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    sent_at         TIMESTAMPTZ,
+    CONSTRAINT report_log_unique UNIQUE (report_type, report_date)
+);
+CREATE INDEX IF NOT EXISTS idx_report_log_date ON report_log (report_date);
+
+-- ─────────────────────────────────────────────
 -- Provenance columns (data_source + source_url)
 -- Added across every fact table so the desk can reconcile divergences
 -- between snapshot vs archive vs historical-API rows.
