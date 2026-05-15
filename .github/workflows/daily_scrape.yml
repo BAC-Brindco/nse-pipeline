@@ -1,10 +1,12 @@
 name: NSE Daily Data Scrape
 
 on:
-  # NSE market closes at 15:30 IST = 10:00 UTC.
-  # We run at 11:00 UTC (16:30 IST) to allow post-close data to publish.
+  # Run T+1 morning at 08:00 IST = 02:30 UTC, Tue–Sat (covers Mon–Fri
+  # trading days). Post-close runs caught only partial short-deals /
+  # bulk-deals / block-deals reports — NSE finalises those overnight, so
+  # we wait until the morning after to fetch the complete day's data.
   schedule:
-    - cron: "0 11 * * 1-5"   # Mon–Fri 11:00 UTC
+    - cron: "30 2 * * 2-6"   # Tue–Sat 02:30 UTC = 08:00 IST
 
   # Allow manual trigger with optional dataset selection
   workflow_dispatch:
