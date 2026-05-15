@@ -1,12 +1,17 @@
 name: NSE Daily Data Scrape
 
 on:
-  # Run T+1 morning at 08:00 IST = 02:30 UTC, Tue–Sat (covers Mon–Fri
-  # trading days). Post-close runs caught only partial short-deals /
-  # bulk-deals / block-deals reports — NSE finalises those overnight, so
-  # we wait until the morning after to fetch the complete day's data.
+  # Why three triggers instead of one:
+  # NSE finalises daily large-deals reports overnight (T → T+1 ~05:00 IST),
+  # and GitHub Actions has been delaying our scheduled runs by ~6–7 hours on
+  # this repo (cron `0 11` was firing at ~17:30 UTC, not 11:00 UTC). To
+  # guarantee at least one run lands on the finalised report each trading
+  # day, we fire three times across T+1. Upserts are idempotent on
+  # (deal_date, symbol) — re-runs only fill missing rows, never duplicate.
   schedule:
-    - cron: "30 2 * * 2-6"   # Tue–Sat 02:30 UTC = 08:00 IST
+    - cron: "30 18 * * 1-5"  # T 18:30 UTC / T+1 00:00 IST scheduled — earliest catch
+    - cron: "30 2 * * 2-6"   # T+1 02:30 UTC / T+1 08:00 IST scheduled — mid-morning catch
+    - cron: "30 8 * * 2-6"   # T+1 08:30 UTC / T+1 14:00 IST scheduled — afternoon fallback
 
   # Allow manual trigger with optional dataset selection
   workflow_dispatch:
