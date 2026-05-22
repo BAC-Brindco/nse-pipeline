@@ -1,26 +1,27 @@
 name: NSE Daily Deals Email Report
 
 on:
-  # Target: report lands in inboxes around 09:00 IST T+1.
-  # GHA on this repo lags scheduled runs by ~6h, so we schedule earlier and
-  # fire multiple times. Idempotency is enforced by report_log's UNIQUE
-  # (report_type, report_date) — the first run that claims the slot sends,
-  # the rest exit silently.
+  # Target: report lands in inboxes at 10:00 IST (Tue–Sat).
+  # GHA on this repo lags scheduled runs by ~2–3 h, so we schedule at 01:30 UTC
+  # to land at ~04:00–04:30 UTC = 09:30–10:00 IST.
+  # A backup trigger at 03:30 UTC fires at ~06:00–06:30 UTC = 11:30–12:00 IST
+  # in case NSE is late publishing short deals (the data-gate in the report
+  # script prevents double-sending — only the first run that finds short deals
+  # ready will claim the slot and send).
   #
-  # Each run also re-runs the deals scrapers first so the report draws from
-  # the freshest possible data (upserts are idempotent on the deal keys).
+  # Each run re-scrapes bulk/block/short deals immediately before composing,
+  # so the report always reflects the freshest available data.
   schedule:
-    - cron: "0 21 * * 1-5"   # T 21:00 UTC / T+1 02:30 IST scheduled — first attempt
-    - cron: "30 22 * * 1-5"  # T 22:30 UTC / T+1 04:00 IST scheduled — second attempt
-    - cron: "0 0 * * 2-6"    # T+1 00:00 UTC / T+1 05:30 IST scheduled — fallback
+    - cron: "30 1 * * 2-6"   # 01:30 UTC T+1 → ~09:30–10:00 IST (primary)
+    - cron: "30 3 * * 2-6"   # 03:30 UTC T+1 → ~11:30–12:00 IST (backup if NSE is late)
   workflow_dispatch:
 
 env:
   PYTHON_VERSION: "3.11"
 
 jobs:
-  refresh-and-report:
-    name: Refresh deals data and send daily report
+  scrape-and-report:
+    name: "9:55 scrape → 10:00 report"
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -37,23 +38,25 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Refresh T-1's deals data before composing the report. Upserts are
-      # idempotent so this is safe even if the daily_scrape workflow has
-      # already populated the rows.
-      - name: Refresh bulk/block/short deals
+      # Final scrape runs immediately before the report (9:55 equivalent).
+      # Upserts are idempotent — safe to re-run even if daily_scrape already ran.
+      - name: Refresh bulk / block / short deals (pre-report scrape)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python main.py --datasets bulk_deals block_deals short_deals
 
-      - name: Send daily report
+      # Report script gates on short_deals being present before claiming the
+      # send slot — exits cleanly if NSE hasn't published yet, so the backup
+      # trigger can retry without double-sending.
+      - name: Send daily deals report (10:00 IST)
         env:
           SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY:        ${{ secrets.SUPABASE_KEY }}
-          GMAIL_USER:          ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD:  ${{ secrets.GMAIL_APP_PASSWORD }}
+          SMTP_USER:           ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD:       ${{ secrets.SMTP_PASSWORD }}
           REPORT_RECIPIENTS:   ${{ secrets.REPORT_RECIPIENTS }}
-          REPORT_SENDER_NAME:  ${{ vars.REPORT_SENDER_NAME || 'BAC Surveillance' }}
+          REPORT_SENDER_NAME:  ${{ vars.REPORT_SENDER_NAME || 'BAC Daily Deals' }}
         run: python -m reports.daily_deals_report
 
       - name: Upload logs on failure
