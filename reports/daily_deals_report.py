@@ -917,6 +917,11 @@ def _build_html(
     gen_month = _gen_ist.strftime("%B, %Y")
 
     svg = _svg_chart(top)
+    chart_html = svg or (
+        f'<p style="color:{_STONE}; font-style:italic; '
+        f"font-family:'Times New Roman',Times,serif;"
+        f'">No value data available.</p>'
+    )
     hlights_html = _highlights_html(highlights)
 
     # Nav strip items
@@ -1030,7 +1035,7 @@ def _build_html(
     "Bulk and block combined, the larger of buy/sell side shown per name.")}
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
     <tr><td style="padding:22px 36px 4px 36px;">
-      {svg if svg else f'<p style="color:{_STONE}; font-style:italic; font-family:\'Times New Roman\',Times,serif;">No value data available.</p>'}
+      {chart_html}
     </td></tr>
   </table>
 
