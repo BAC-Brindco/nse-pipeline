@@ -1,19 +1,14 @@
 name: NSE Daily Deals Email Report
 
 on:
-  # Target: report lands in inboxes at 10:00 IST (Tue–Sat).
-  # GHA on this repo lags scheduled runs by ~2–3 h, so we schedule at 01:30 UTC
-  # to land at ~04:00–04:30 UTC = 09:30–10:00 IST.
-  # A backup trigger at 03:30 UTC fires at ~06:00–06:30 UTC = 11:30–12:00 IST
-  # in case NSE is late publishing short deals (the data-gate in the report
-  # script prevents double-sending — only the first run that finds short deals
-  # ready will claim the slot and send).
-  #
-  # Each run re-scrapes bulk/block/short deals immediately before composing,
-  # so the report always reflects the freshest available data.
+  # Target: 9:45 AM IST, Tuesday–Saturday (T+1 for previous trading day).
+  # IST = UTC+5:30, so 9:45 IST = 04:15 UTC.
+  # GHA on this repo lags scheduled runs by ~2–3 h, so we schedule at 01:45 UTC
+  # to land at ~04:00–04:45 UTC = 09:30–10:15 IST.
+  # Short deals are included if NSE has published them by trigger time; if not,
+  # the report sends with 0 short deals — no blocking on data completeness.
   schedule:
-    - cron: "30 1 * * 2-6"   # 01:30 UTC T+1 → ~09:30–10:00 IST (primary)
-    - cron: "30 3 * * 2-6"   # 03:30 UTC T+1 → ~11:30–12:00 IST (backup if NSE is late)
+    - cron: "45 1 * * 2-6"   # 01:45 UTC T+1 → ~09:45 IST (Tue–Sat)
   workflow_dispatch:
 
 env:
@@ -21,7 +16,7 @@ env:
 
 jobs:
   scrape-and-report:
-    name: "9:55 scrape → 10:00 report"
+    name: "9:40 scrape → 9:45 report"
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -38,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Final scrape runs immediately before the report (9:55 equivalent).
+      # Scrape runs immediately before the report to get the freshest data.
       # Upserts are idempotent — safe to re-run even if daily_scrape already ran.
       - name: Refresh bulk / block / short deals (pre-report scrape)
         env:
@@ -46,10 +41,7 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python main.py --datasets bulk_deals block_deals short_deals
 
-      # Report script gates on short_deals being present before claiming the
-      # send slot — exits cleanly if NSE hasn't published yet, so the backup
-      # trigger can retry without double-sending.
-      - name: Send daily deals report (10:00 IST)
+      - name: Send daily deals report (9:45 IST)
         env:
           SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY:        ${{ secrets.SUPABASE_KEY }}

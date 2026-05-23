@@ -6,8 +6,8 @@ trading day's bulk / block / short deals.
 
 Env vars required:
   SUPABASE_URL, SUPABASE_KEY
-  GMAIL_USER          — sending address (bac@brindco.com on Google Workspace)
-  GMAIL_APP_PASSWORD  — Google app-specific password for GMAIL_USER
+  SMTP_USER           — sending address (bac@brindco.com)
+  SMTP_PASSWORD       — Google app-specific password for SMTP_USER
   REPORT_RECIPIENTS   — comma-separated list, e.g. parv.bangar@brindco.com
   REPORT_SENDER_NAME  — optional, defaults to "BAC Daily Deals"
 """
@@ -1190,13 +1190,6 @@ def main(report_date_override: date | None = None, preview_path: str | None = No
         smtp_password = _env("SMTP_PASSWORD")
         recipients    = [r.strip() for r in _env("REPORT_RECIPIENTS").split(",") if r.strip()]
         sender_name   = os.environ.get("REPORT_SENDER_NAME", "BAC Daily Deals")
-
-        if not _short_deals_ready(report_date):
-            logger.info(
-                "Short deals not yet in DB for %s — exiting without claiming slot "
-                "(will retry on next trigger)", report_date,
-            )
-            return 0
 
         if not _claim_slot(report_date, recipients):
             return 0
