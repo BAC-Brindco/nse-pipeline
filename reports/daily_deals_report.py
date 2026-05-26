@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import smtplib
 import sys
+import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from html import escape as _e
@@ -1150,21 +1152,186 @@ def _csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode("utf-8") if not df.empty else b""
 
 
-# ─── Short-deals readiness gate ──────────────────────────────────────────────
+# ─── Slack (incoming webhook) ─────────────────────────────────────────────────
 
-def _short_deals_ready(report_date: date, min_records: int = 10) -> bool:
-    """Return True if short_deals for report_date has been populated by NSE."""
-    from database.client import get_client
-    try:
-        resp = (
-            get_client().table("short_deals")
-            .select("id", count="exact")
-            .eq("deal_date", report_date.isoformat())
-            .execute()
-        )
-        return (resp.count or 0) >= min_records
-    except Exception:
-        return True  # DB error → don't block; let report proceed
+_HTML_ENTITIES = [
+    ("&mdash;", "—"), ("&ndash;", "–"), ("&nbsp;", " "), ("&amp;", "&"),
+    ("&thinsp;", " "), ("&hellip;", "…"), ("&middot;", "·"), ("&bull;", "•"),
+    ("&lt;", "<"), ("&gt;", ">"), ("&sup2;", "²"),
+]
+
+def _strip_html(s: str) -> str:
+    s = re.sub(r"<[^>]+>", "", s)
+    for ent, rep in _HTML_ENTITIES:
+        s = s.replace(ent, rep)
+    return re.sub(r" {2,}", " ", s).strip()
+
+
+def _fmt_cr_plain(v: float) -> str:
+    if v <= 0:
+        return "—"
+    if v >= 1000:
+        return f"₹ {v:,.0f} cr"
+    if v >= 100:
+        return f"₹ {v:.0f} cr"
+    return f"₹ {v:.1f} cr"
+
+
+def _slack_s(text: str) -> dict:
+    return {"type": "section", "text": {"type": "mrkdwn", "text": text[:3000]}}
+
+
+def _code_table(headers: list[str], widths: list[int], rows: list[list[str]]) -> str:
+    def fmt(cells: list[str]) -> str:
+        return "  ".join(str(c)[:w].ljust(w) for c, w in zip(cells, widths))
+    lines = ["```", fmt(headers), "  ".join("-" * w for w in widths)]
+    lines += [fmt(r) for r in rows]
+    lines.append("```")
+    return "\n".join(lines)
+
+
+def _build_slack_blocks(
+    report_date: date,
+    bulk_sym: pd.DataFrame,
+    block_sym: pd.DataFrame,
+    short_filt: pd.DataFrame,
+    bulk_client: pd.DataFrame,
+    block_client: pd.DataFrame,
+    top: pd.DataFrame,
+    metrics: dict,
+    highlights: list[dict],
+) -> list[dict]:
+    bm  = metrics["bulk"]
+    bkm = metrics["block"]
+    sm  = metrics["short"]
+    blocks: list[dict] = []
+
+    _months = ["", "January", "February", "March", "April", "May", "June",
+               "July", "August", "September", "October", "November", "December"]
+    date_str = f"{report_date.strftime('%A')}, {report_date.day} {_months[report_date.month]} {report_date.year}"
+
+    # ── Masthead ──────────────────────────────────────────────────────────────
+    blocks.append({"type": "header", "text": {"type": "plain_text",
+        "text": f"Daily Deals — NSE — {report_date.strftime('%d %b %Y')}"}})
+    blocks.append({"type": "context", "elements": [{"type": "mrkdwn",
+        "text": "Brindco Alpha Capital  ◆  _a daily note from the quant desk_"}]})
+    blocks.append(_slack_s(f"_{date_str}_"))
+    blocks.append({"type": "divider"})
+
+    # ── Topline metrics ───────────────────────────────────────────────────────
+    blocks.append({"type": "section", "fields": [
+        {"type": "mrkdwn", "text": f"*Bulk Deals*\n{_fmt_cr_plain(bm['value_cr'])}  ·  {bm['deals']} deals  ·  {bm['names']} names"},
+        {"type": "mrkdwn", "text": f"*Block Deals*\n{_fmt_cr_plain(bkm['value_cr'])}  ·  {bkm['deals']} deals  ·  {bkm['names']} names"},
+        {"type": "mrkdwn", "text": f"*Short Selling*\n{sm['deals']} positions  ·  {sm['above_threshold']} above 5,000 shares"},
+    ]})
+    blocks.append({"type": "divider"})
+
+    # ── Highlights ────────────────────────────────────────────────────────────
+    if highlights:
+        blocks.append(_slack_s("*i.  Highlights*"))
+        for card in highlights[:4]:
+            tag   = _strip_html(card.get("tag", ""))
+            title = _strip_html(card.get("title", ""))
+            body  = _strip_html(card.get("body", ""))
+            blocks.append(_slack_s(f"*{tag}*\n*{title}*\n{body}"))
+        blocks.append({"type": "divider"})
+
+    # ── Top names by value (bar chart) ────────────────────────────────────────
+    if not top.empty:
+        blocks.append(_slack_s("*ii.  Top names by value*\n_Bulk and block combined_"))
+        max_val = float(top["value_cr"].max())
+        lines = []
+        for row in top.head(10).itertuples():
+            bar = "█" * max(1, int(float(row.value_cr) / max_val * 20))
+            lines.append(f"`{str(row.symbol):<14}` {bar}  {_fmt_cr_plain(float(row.value_cr))}")
+        blocks.append(_slack_s("\n".join(lines)))
+        blocks.append({"type": "divider"})
+
+    # ── Bulk by symbol ────────────────────────────────────────────────────────
+    if not bulk_sym.empty:
+        blocks.append(_slack_s(f"*iii.  Bulk Deals, by symbol*\n_{bm['names']} names · sorted by value_"))
+        rows = []
+        for row in bulk_sym.head(30).itertuples():
+            bq = int(getattr(row, "buy_qty", 0))
+            sq = int(getattr(row, "sell_qty", 0))
+            rows.append([str(row.symbol), f"{bq:,}" if bq else "—",
+                         f"{sq:,}" if sq else "—", _fmt_cr_plain(float(row.total_vcr)), str(row.flag)])
+        tbl = _code_table(["Symbol", "Buy Qty", "Sell Qty", "₹ Cr", "Flg"],
+                          [14, 14, 14, 14, 3], rows)
+        if len(bulk_sym) > 30:
+            tbl += f"\n_…and {len(bulk_sym) - 30} more_"
+        blocks.append(_slack_s(tbl))
+        blocks.append({"type": "divider"})
+
+    # ── Block by symbol ───────────────────────────────────────────────────────
+    if not block_sym.empty:
+        blocks.append(_slack_s(f"*iv.  Block Deals, by symbol*\n_{bkm['names']} names · pre-open block window_"))
+        rows = []
+        for row in block_sym.itertuples():
+            bq = int(getattr(row, "buy_qty", 0))
+            sq = int(getattr(row, "sell_qty", 0))
+            rows.append([str(row.symbol), f"{bq:,}" if bq else "—",
+                         f"{sq:,}" if sq else "—", _fmt_cr_plain(float(row.total_vcr)), str(row.flag)])
+        blocks.append(_slack_s(_code_table(["Symbol", "Buy Qty", "Sell Qty", "₹ Cr", "Flg"],
+                                           [14, 14, 14, 14, 3], rows)))
+        blocks.append({"type": "divider"})
+
+    # ── Short selling ─────────────────────────────────────────────────────────
+    blocks.append(_slack_s("*v.  Short Selling*\n_Intraday positions ≥ 5,000 shares_"))
+    if not short_filt.empty:
+        rows = [[str(r.get("symbol", "")), f"{int(r.get('quantity', 0)):,}"]
+                for _, r in short_filt.head(30).iterrows()]
+        blocks.append(_slack_s(_code_table(["Symbol", "Quantity"], [16, 14], rows)))
+    else:
+        blocks.append(_slack_s("_No qualifying short positions today._"))
+    blocks.append({"type": "divider"})
+
+    # ── Bulk by client ────────────────────────────────────────────────────────
+    if not bulk_client.empty:
+        blocks.append(_slack_s("*vi.  Bulk Deals, by client*\n_One row per client–symbol pair, ordered by total value descending_"))
+        rows = []
+        for _, r in bulk_client.head(20).iterrows():
+            rows.append([str(r["client_name"])[:22], str(r["class"]),
+                         str(r["symbol"]), str(r["side"]), _fmt_cr_plain(float(r["vcr"]))])
+        tbl = _code_table(["Client", "Class", "Symbol", "Side", "₹ Cr"],
+                          [24, 7, 12, 5, 14], rows)
+        if len(bulk_client) > 20:
+            tbl += f"\n_…and {len(bulk_client) - 20} more_"
+        blocks.append(_slack_s(tbl))
+        blocks.append({"type": "divider"})
+
+    # ── Block by client ───────────────────────────────────────────────────────
+    if not block_client.empty:
+        blocks.append(_slack_s(f"*vii.  Block Deals, by client*\n_{bkm['deals']} deal{'s' if bkm['deals'] != 1 else ''} · pre-open window_"))
+        rows = []
+        for _, r in block_client.iterrows():
+            rows.append([str(r["client_name"])[:22], str(r["class"]),
+                         str(r["symbol"]), str(r["side"]), _fmt_cr_plain(float(r["vcr"]))])
+        blocks.append(_slack_s(_code_table(["Client", "Class", "Symbol", "Side", "₹ Cr"],
+                                           [24, 7, 12, 5, 14], rows)))
+        blocks.append({"type": "divider"})
+
+    # ── Colophon ──────────────────────────────────────────────────────────────
+    blocks.append({"type": "context", "elements": [{"type": "mrkdwn",
+        "text": f"◆  ◆  ◆  Data from NSE archives — bulk, block, and short feeds.  {report_date.strftime('%d %b %Y')}"}]})
+
+    return blocks[:50]  # Slack hard limit
+
+
+def _send_slack(webhook_url: str, blocks: list[dict], report_date: date) -> None:
+    import json
+    payload = json.dumps({
+        "text": f"BAC Daily Deals — NSE — {report_date.strftime('%d %b %Y')}",
+        "blocks": blocks,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        webhook_url, data=payload,
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        body = resp.read()
+        if resp.status != 200:
+            raise RuntimeError(f"Slack webhook {resp.status}: {body}")
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
@@ -1243,6 +1410,19 @@ def main(report_date_override: date | None = None, preview_path: str | None = No
         )
         _mark_sent(report_date)
         logger.info("Sent report for %s to %s", report_date, recipients)
+
+        slack_webhook = os.environ.get("SLACK_WEBHOOK_URL", "")
+        if slack_webhook:
+            try:
+                slack_blocks = _build_slack_blocks(
+                    report_date, bulk_sym, block_sym, short_filt,
+                    bulk_client, block_client, top, metrics, hlights,
+                )
+                _send_slack(slack_webhook, slack_blocks, report_date)
+                logger.info("Slack notification sent for %s", report_date)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Slack send failed (non-fatal): %s", exc)
+
         return 0
 
     except Exception as exc:  # noqa: BLE001

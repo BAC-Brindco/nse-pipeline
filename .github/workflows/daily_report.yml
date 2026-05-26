@@ -61,6 +61,7 @@ jobs:
           SMTP_PASSWORD:       ${{ secrets.SMTP_PASSWORD }}
           REPORT_RECIPIENTS:   ${{ secrets.REPORT_RECIPIENTS }}
           REPORT_SENDER_NAME:  ${{ vars.REPORT_SENDER_NAME || 'BAC Daily Deals' }}
+          SLACK_WEBHOOK_URL:   ${{ secrets.SLACK_WEBHOOK_URL }}
         run: python -m reports.daily_deals_report
 
       - name: Upload logs on failure
