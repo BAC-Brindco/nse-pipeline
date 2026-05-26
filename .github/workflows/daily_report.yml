@@ -1,12 +1,14 @@
 name: NSE Daily Deals Email Report
 
 on:
-  # Cron fires early (01:30 UTC = 07:00 IST) so the job starts well before
-  # 9:45 IST regardless of GHA scheduling lag (observed 2–3 h on this repo).
-  # The first step then sleeps until exactly 09:45 IST before scraping and
-  # sending, so the report is never early even if GHA lag shrinks.
+  # Three staggered crons so GHA scheduling lag (observed 2–6 h on this repo)
+  # cannot silently skip a day. All jobs sleep until exactly 09:45 IST before
+  # scraping and sending. Whichever wakes first claims the slot and sends;
+  # the others hit a 409 conflict and exit cleanly — no duplicate emails.
   schedule:
-    - cron: "30 1 * * 2-6"   # 01:30 UTC → job starts ~07:00–10:00 IST
+    - cron: "0 0 * * 2-6"    # 00:00 UTC → arrives ~06:00–08:00 IST, sleeps to 09:45
+    - cron: "30 1 * * 2-6"   # 01:30 UTC → arrives ~07:00–09:30 IST, sleeps to 09:45
+    - cron: "0 3 * * 2-6"    # 03:00 UTC → arrives ~08:30–10:00 IST, sleeps to 09:45
   workflow_dispatch:
 
 env:
