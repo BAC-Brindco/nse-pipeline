@@ -1,14 +1,18 @@
 name: NSE Daily Deals Email Report
 
 on:
-  # Three staggered crons so GHA scheduling lag (observed 2–6 h on this repo)
-  # cannot silently skip a day. All jobs sleep until exactly 09:45 IST before
-  # scraping and sending. Whichever wakes first claims the slot and sends;
-  # the others hit a 409 conflict and exit cleanly — no duplicate emails.
+  # Primary trigger: cron-job.org fires workflow_dispatch at exactly 04:30 UTC
+  # (= 10:00 IST) every Tue–Sat via the GitHub API. These GHA schedules are
+  # fallbacks only — they fire if cron-job.org misses a day.
+  #
+  # Old approach (sleep until 09:45 IST) was broken: the 00:00 UTC trigger needed
+  # a 255-min sleep but timeout-minutes was 210, so it silently timed out every day.
+  # Removed sleep entirely — _claim_slot() idempotency prevents duplicate emails
+  # if more than one trigger fires close together.
   schedule:
-    - cron: "0 0 * * 2-6"    # 00:00 UTC → arrives ~06:00–08:00 IST, sleeps to 09:45
-    - cron: "30 1 * * 2-6"   # 01:30 UTC → arrives ~07:00–09:30 IST, sleeps to 09:45
-    - cron: "0 3 * * 2-6"    # 03:00 UTC → arrives ~08:30–10:00 IST, sleeps to 09:45
+    - cron: "30 4 * * 2-6"   # 04:30 UTC = 10:00 IST — primary GHA fallback
+    - cron: "00 5 * * 2-6"   # 05:00 UTC = 10:30 IST — 30-min fallback
+    - cron: "30 5 * * 2-6"   # 05:30 UTC = 11:00 IST — 1-hour fallback
   workflow_dispatch:
 
 env:
@@ -16,23 +20,11 @@ env:
 
 jobs:
   scrape-and-report:
-    name: "9:45 IST daily deals report"
+    name: "10:00 IST daily deals report"
     runs-on: ubuntu-latest
-    timeout-minutes: 210   # up to 3.5 h sleep + 25 min work
+    timeout-minutes: 30   # scrape + report takes ~15 min; 30 is generous
 
     steps:
-      - name: Wait until 09:45 IST
-        run: |
-          TARGET=$(TZ=Asia/Kolkata date -d "today 09:45" +%s)
-          NOW=$(date +%s)
-          WAIT=$((TARGET - NOW))
-          if [ "$WAIT" -gt 0 ]; then
-            echo "Sleeping ${WAIT}s ($(( WAIT / 60 )) min) until 09:45 IST"
-            sleep "$WAIT"
-          else
-            echo "Already past 09:45 IST — proceeding immediately"
-          fi
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -45,15 +37,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Scrape runs at 9:45 IST immediately before the report.
-      # Upserts are idempotent — safe to re-run even if daily_scrape already ran.
+      # Last-minute scrape immediately before the report — upserts are idempotent.
       - name: Refresh bulk / block / short deals (pre-report scrape)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python main.py --datasets bulk_deals block_deals short_deals
 
-      - name: Send daily deals report (9:45 IST)
+      - name: Send daily deals report (10:00 IST)
         env:
           SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY:        ${{ secrets.SUPABASE_KEY }}
