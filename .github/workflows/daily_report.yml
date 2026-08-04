@@ -37,12 +37,31 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Chromium renders the comprehensive edition to the attached PDF.
+      # --with-deps pulls the shared libraries headless Chromium needs on the
+      # runner image. If this step is removed the email still sends, just
+      # without the PDF (render_pdf degrades rather than raising).
+      - name: Install Chromium for PDF rendering
+        run: playwright install --with-deps chromium
+
       # Last-minute scrape immediately before the report — upserts are idempotent.
       - name: Refresh bulk / block / short deals (pre-report scrape)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python main.py --datasets bulk_deals block_deals short_deals
+
+      # Index membership only — a few static CSVs, seconds to fetch, and it
+      # keeps the NIFTY badges correct through index reshuffles. Market caps are
+      # deliberately NOT refreshed here: that is ~1,400 Screener.in requests and
+      # belongs in the weekly job, not the critical path of the morning email.
+      # Non-fatal — a stale security master still ranks yesterday's way.
+      - name: Refresh index membership
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python -m scrapers.security_master_refresh --indices-only
 
       - name: Send daily deals report (10:00 IST)
         env:

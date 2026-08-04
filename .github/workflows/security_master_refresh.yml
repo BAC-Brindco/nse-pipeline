@@ -1,0 +1,84 @@
+name: Refresh Security Master
+
+# Keeps data/security_master.json current — NIFTY index membership and market
+# capitalisation for every symbol the deals feeds have ever carried.
+#
+# Why this is a separate weekly job rather than part of daily_report.yml:
+# a full market-cap pass is ~1,400 Screener.in requests at ~1.2s each (~30 min).
+# That does not belong in the critical path of a 10:00 IST email. The daily job
+# refreshes index membership only (a few static CSVs, seconds).
+#
+# The refreshed file is committed back, so the report reads it straight from the
+# checkout with no network call and index changes land as reviewable diffs.
+
+on:
+  schedule:
+    - cron: "30 20 * * 6"   # Saturday 20:30 UTC / Sunday 02:00 IST — markets shut
+  workflow_dispatch:
+    inputs:
+      max_age_days:
+        description: "Re-fetch market caps older than N days"
+        default: "30"
+      limit:
+        description: "Cap symbols fetched this run (blank = no cap)"
+        default: ""
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  refresh:
+    name: Refresh index membership + market caps
+    runs-on: ubuntu-latest
+    timeout-minutes: 75   # a full ~1,400-symbol pass runs ~30-40 min
+
+    permissions:
+      contents: write   # required to commit the refreshed reference file
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Refresh security master
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python -m scrapers.security_master_refresh \
+            --from-deals \
+            --max-age-days "${{ github.event.inputs.max_age_days || '30' }}" \
+            ${{ github.event.inputs.limit && format('--limit {0}', github.event.inputs.limit) || '' }}
+
+      - name: Commit refreshed reference data
+        run: |
+          if git diff --quiet -- data/security_master.json; then
+            echo "No change to security master — nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/security_master.json
+          git commit -m "chore: refresh security master (index membership + market caps)"
+          git push
+
+      - name: Summarise
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("data/security_master.json")
+          if not p.exists():
+              print("security_master.json missing"); raise SystemExit(0)
+          meta = json.loads(p.read_text(encoding="utf-8")).get("_meta", {})
+          for k, v in meta.items():
+              print(f"{k}: {v}")
+          PY
