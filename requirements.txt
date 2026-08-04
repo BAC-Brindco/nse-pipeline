@@ -11,3 +11,6 @@ beautifulsoup4==4.12.3
 urllib3==2.1.0
 tqdm==4.66.2
 numpy==1.26.4
+# Renders the comprehensive report to PDF for the email attachment.
+# Needs a one-off `playwright install chromium` (see daily_report.yml).
+playwright==1.48.0
