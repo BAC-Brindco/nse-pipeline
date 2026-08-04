@@ -4,12 +4,28 @@ Daily NSE deals email report — humanised newspaper format.
 Runs once per trading-day morning (Tue–Sat IST), reporting on the previous
 trading day's bulk / block / short deals.
 
+Two editions of the same report are produced each run:
+
+  * FOCUS — the email body. Scoped to the ten largest companies by market
+    capitalisation among the day's deal names, each badged with its NIFTY index
+    tier. Bulk deals trigger at >0.5% of traded quantity, which large-cap free
+    floats almost never reach, so an index-membership filter (e.g. NIFTY50-only)
+    would leave the body empty on the overwhelming majority of sessions. Ranking
+    the day's actual names by market cap keeps the large-cap lens the desk wants
+    while guaranteeing the body always carries the session's biggest names.
+
+  * COMPREHENSIVE — every deal, unfiltered, rendered to a PDF and attached.
+    Nothing is dropped from the record; the email body is a lens onto it.
+
 Env vars required:
   SUPABASE_URL, SUPABASE_KEY
   SMTP_USER           — sending address (bac@brindco.com)
   SMTP_PASSWORD       — Google app-specific password for SMTP_USER
   REPORT_RECIPIENTS   — comma-separated list, e.g. parv.bangar@brindco.com
   REPORT_SENDER_NAME  — optional, defaults to "BAC Daily Deals"
+
+Optional:
+  REPORT_FOCUS_TOP_N  — how many companies the email body covers (default 10)
 """
 
 from __future__ import annotations
@@ -22,28 +38,44 @@ import sys
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
+from email.policy import SMTP as SMTP_POLICY
+from email.utils import formatdate, make_msgid
 from html import escape as _e
 
 import pandas as pd
+
+from reports import design as d
+from reports.pdf_render import render_pdf
+from utils import security_master as sm
 
 logger = logging.getLogger("nse.report")
 
 REPORT_TYPE = "daily_deals_email"
 SHORT_MIN_QTY = 5_000
 
-# ─── Palette (matches the humanised template) ─────────────────────────────────
-_INK        = "#1a1410"
-_INK_SOFT   = "#3a322a"
-_STONE      = "#837763"
-_PARCHMENT  = "#faf5e8"
-_SAND       = "#e8dec8"
-_TAN        = "#c6b896"
-_CREAM      = "#fcf8ec"
-_WARM_GREY  = "#f3ecd6"
-_BURGUNDY   = "#6f1d1b"
-_NAVY       = "#1c2956"
-_OLIVE      = "#5a5e2a"
-_AMBER      = "#a6562b"
+# How many companies the email body covers, largest by market cap first.
+FOCUS_TOP_N = int(os.environ.get("REPORT_FOCUS_TOP_N", "10"))
+
+EDITION_FULL = "full"
+EDITION_FOCUS = "focus"
+
+# ─── Palette ──────────────────────────────────────────────────────────────────
+# Sourced from reports/design.py, which carries the BAC house style transcribed
+# from the morning brief. No colour literal belongs in this file: the whole point
+# of the shared module is that deals amber and morning-brief amber are the same
+# hex by construction. These are local aliases for brevity only.
+_INK        = d.INK
+_INK_SOFT   = d.INK_SOFT
+_STONE      = d.INK_FAINT
+_PAPER      = d.PAPER
+_NAVY       = d.NAVY
+_NAVY_SOFT  = d.NAVY_SOFT
+_GOLD       = d.GOLD
+_RULE       = d.RULE
+_BAND       = d.BAND
+_GOOD       = d.GOOD
+_BAD        = d.BAD
+_WARN       = d.WARN
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -62,53 +94,29 @@ def _previous_trading_day(today: date) -> date:
     return d
 
 
-def _ordinal(n: int) -> str:
-    s = "th" if 11 <= (n % 100) <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-    return f"{n}<sup style='font-size:9px;'>{s}</sup>"
+def _house_date(dt: date) -> str:
+    """'Thu 30-Jul-2026' — the house dateline format.
 
-
-def _long_date(d: date) -> str:
-    """'Thursday, the 14th of May, two thousand and twenty-six'"""
-    ones = ["", "one", "two", "three", "four", "five", "six", "seven",
-            "eight", "nine", "ten", "eleven", "twelve", "thirteen",
-            "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
-    tens = ["", "", "twenty", "thirty", "forty", "fifty",
-            "sixty", "seventy", "eighty", "ninety"]
-    year = d.year
-    if 2000 <= year < 2100:
-        rem = year - 2000
-        if rem == 0:
-            yr_words = "two thousand"
-        elif rem < 20:
-            yr_words = f"two thousand and {ones[rem]}"
-        else:
-            yr_words = f"two thousand and {tens[rem // 10]}" + (
-                f"-{ones[rem % 10]}" if rem % 10 else ""
-            )
-    else:
-        yr_words = str(year)
-
-    months = ["", "January", "February", "March", "April", "May", "June",
-              "July", "August", "September", "October", "November", "December"]
-    return (
-        f"<span style='font-style:italic;'>{d.strftime('%A')}</span>, "
-        f"the {_ordinal(d.day)} of {months[d.month]}, {yr_words}"
-    )
+    Parameter is `dt`, not `d`: `d` is the design module in this file's scope and
+    shadowing it here would silently break every style call in the callee.
+    """
+    return dt.strftime("%a %d-%b-%Y")
 
 
 def _fmt_cr(v: float) -> str:
-    if v <= 0:
-        return "—"
+    """Rupee crore. Zero or missing prints the em-dash, never '0'."""
+    if v is None or v <= 0:
+        return d.EM_DASH
     if v >= 1000:
-        return f"₹&nbsp;{v:,.0f}"
+        return f"&#8377;&nbsp;{v:,.0f}"
     if v >= 100:
-        return f"₹&nbsp;{v:.0f}"
-    return f"₹&nbsp;{v:.1f}"
+        return f"&#8377;&nbsp;{v:.0f}"
+    return f"&#8377;&nbsp;{v:.1f}"
 
 
 def _fmt_qty(n: int | float) -> str:
     if not n or n == 0:
-        return '<span style="color:#837763;">—</span>'
+        return f'<span style="color:{_STONE};">{d.EM_DASH}</span>'
     return f"{int(n):,}"
 
 
@@ -164,10 +172,13 @@ _CLIENT_RULES: list[tuple[str, list[str]]] = [
                 "HOLDINGS LTD", "VENTURES LTD"]),
 ]
 
+# Client class is a taxonomy, not a judgement — none of these is "good" or
+# "bad", so the semantic trio is deliberately unused here. Navy marks the
+# institutional classes, faint grey the rest.
 _TAG_COLOR = {
-    "FII": _NAVY, "DII/MF": _OLIVE, "AIF": _OLIVE,
-    "HFT": _BURGUNDY, "PROP": _BURGUNDY, "BRKR": _STONE,
-    "CORP": _STONE, "STRAT": _BURGUNDY, "HNI": _STONE,
+    "FII": _NAVY, "DII/MF": _NAVY, "AIF": _NAVY,
+    "HFT": _NAVY_SOFT, "PROP": _NAVY_SOFT, "STRAT": _NAVY_SOFT,
+    "BRKR": _STONE, "CORP": _STONE, "HNI": _STONE,
     "TRUST": _STONE, "OTHER": _STONE,
 }
 
@@ -186,21 +197,141 @@ def _classify(name: str) -> str:
 
 
 def _tag_html(tag: str) -> str:
-    c = _TAG_COLOR.get(tag, _STONE)
-    return (
-        f'<span style="border:1px solid {c}; color:{c}; '
-        f'padding:1px 6px 2px 6px; font-size:9px; letter-spacing:0.14em; '
-        f'font-weight:600; font-family:\'Times New Roman\',Times,serif;">'
-        f'{_e(tag)}</span>'
-    )
+    return d.badge(tag, _TAG_COLOR.get(tag, _STONE)).lstrip("&nbsp;")
 
 
 def _side_html(side: str) -> str:
+    """Buy / sell / both. Direction is meaning, so it takes the semantic pair."""
     if side == "b":
-        return f'<span style="color:{_OLIVE}; font-weight:600; font-family:\'Times New Roman\',Times,serif;">b</span>'
+        return f'<span style="{d.font(12, color=_GOOD, weight="bold")}">buy</span>'
     if side == "s":
-        return f'<span style="color:{_BURGUNDY}; font-weight:600; font-family:\'Times New Roman\',Times,serif;">s</span>'
-    return f'<span style="color:{_STONE}; font-style:italic; font-family:\'Times New Roman\',Times,serif;">b·s</span>'
+        return f'<span style="{d.font(12, color=_BAD, weight="bold")}">sell</span>'
+    return f'<span style="{d.font(12, color=_STONE)}">both</span>'
+
+
+# ─── Index tier badges ────────────────────────────────────────────────────────
+
+_TIER_STYLE = {
+    sm.TIER_NIFTY50:  (_NAVY,      "NIFTY50"),
+    sm.TIER_NIFTY100: (_NAVY_SOFT, "NIFTY100"),
+    sm.TIER_NIFTY500: (_STONE,     "NIFTY500"),
+}
+
+
+def _index_badge(symbol: str) -> str:
+    """Index-tier badge, or '' for names outside the NIFTY500."""
+    style = _TIER_STYLE.get(sm.tier(symbol))
+    if not style:
+        return ""
+    color, label = style
+    return d.badge(label, color)
+
+
+def _fmt_mcap(symbol: str) -> str:
+    """Market cap as a compact rupee figure — lakh crore above 1,00,000 cr."""
+    v = sm.market_cap_cr(symbol)
+    if v is None:
+        return f'<span style="color:{_STONE};">{d.EM_DASH}</span>'
+    if v >= 100_000:
+        return f"&#8377;&nbsp;{v / 100_000:.2f}&nbsp;L&nbsp;cr"
+    return f"&#8377;&nbsp;{v:,.0f}&nbsp;cr"
+
+
+# ─── Focus selection (email body scope) ──────────────────────────────────────
+
+def _all_symbols(*frames: pd.DataFrame) -> list[str]:
+    out: list[str] = []
+    for df in frames:
+        if df is not None and not df.empty and "symbol" in df.columns:
+            out.extend(df["symbol"].dropna().astype(str).tolist())
+    return list(dict.fromkeys(out))
+
+
+def _focus_scope(
+    bulk: pd.DataFrame, block: pd.DataFrame, short: pd.DataFrame,
+    n: int = FOCUS_TOP_N,
+) -> dict[str, list[str]]:
+    """Top n by market cap *per dataset*, not once across all three.
+
+    A single global ranking is the obvious reading of "top 10 by market cap"
+    and it produces a near-empty email: the ten largest companies transacting
+    on any given day are almost never the ones with reportable bulk or block
+    deals (a bulk deal needs 0.5% of traded quantity, which mega-cap free
+    floats do not reach). Ranking within each dataset gives every section its
+    own ten largest names, so each one carries the biggest names that actually
+    appear in it.
+    """
+    candidates = _all_symbols(bulk, block, short)
+    known, total = sm.coverage(candidates)
+    if total and known < total:
+        logger.info(
+            "Market-cap coverage: %d/%d of today's names (%d unknown, ranked out). "
+            "Refresh with: python -m scrapers.security_master_refresh --from-deals",
+            known, total, total - known,
+        )
+
+    scope = {
+        "bulk":  sm.rank_by_market_cap(_all_symbols(bulk), n),
+        "block": sm.rank_by_market_cap(_all_symbols(block), n),
+        "short": sm.rank_by_market_cap(_all_symbols(short), n),
+    }
+
+    # Fallback: market caps unavailable (security master missing, or never
+    # seeded past index membership) but deals exist. Ranking by deal value
+    # keeps the email useful instead of shipping an empty body; the banner
+    # says which basis was used so nobody reads it as a market-cap ranking.
+    if known == 0 and total > 0:
+        logger.warning(
+            "No market caps available for any of today's %d names — falling back "
+            "to deal-value ranking. Seed with: "
+            "python -m scrapers.security_master_refresh --from-deals",
+            total,
+        )
+        scope = {
+            "bulk":  _rank_by_value(bulk, n),
+            "block": _rank_by_value(block, n),
+            "short": _rank_by_qty(short, n),
+            "_basis": "value",
+        }
+
+    for name, syms in scope.items():
+        if name.startswith("_"):
+            continue
+        logger.info("Focus scope [%s]: %d names — %s", name, len(syms), ", ".join(syms) or "none")
+    return scope
+
+
+def _rank_by_value(df: pd.DataFrame, n: int) -> list[str]:
+    if df is None or df.empty or "value_cr" not in df.columns:
+        return []
+    agg = df.groupby("symbol")["value_cr"].sum().sort_values(ascending=False)
+    return [str(s) for s in agg.head(n).index]
+
+
+def _rank_by_qty(df: pd.DataFrame, n: int) -> list[str]:
+    if df is None or df.empty or "quantity" not in df.columns:
+        return []
+    agg = df.groupby("symbol")["quantity"].sum().sort_values(ascending=False)
+    return [str(s) for s in agg.head(n).index]
+
+
+def _focus_union(scope: dict[str, list[str]]) -> list[str]:
+    """All focus names across sections, largest first — for the scope banner."""
+    seen: list[str] = []
+    for key, syms in scope.items():
+        if key.startswith("_"):
+            continue
+        seen.extend(syms)
+    ranked = sm.rank_by_market_cap(seen)
+    # Under the deal-value fallback nothing has a market cap, so ranking drops
+    # everything; keep first-seen order instead of returning an empty list.
+    return ranked or list(dict.fromkeys(seen))
+
+
+def _filter_symbols(df: pd.DataFrame, symbols: list[str]) -> pd.DataFrame:
+    if df is None or df.empty or "symbol" not in df.columns or not symbols:
+        return df.iloc[0:0].copy() if df is not None and not df.empty else pd.DataFrame()
+    return df[df["symbol"].astype(str).isin(set(symbols))].copy()
 
 
 # ─── Idempotency ──────────────────────────────────────────────────────────────
@@ -366,10 +497,19 @@ def _sym_rows(df: pd.DataFrame) -> pd.DataFrame:
     return wide.reset_index(drop=True)
 
 
-def _short_rows(df: pd.DataFrame) -> pd.DataFrame:
+def _short_rows(df: pd.DataFrame, min_qty: int = SHORT_MIN_QTY) -> pd.DataFrame:
+    """Shorts above a quantity floor, largest first.
+
+    The floor exists to strip noise from a market-wide feed. It is a *share
+    count*, so it scales with price in exactly the wrong direction: 5,000
+    shares of a ₹13 stock is ₹65,000 while 5,000 shares of RELIANCE is ₹65
+    lakh. The focused edition passes min_qty=0 because ranking by market cap
+    has already done the filtering, and applying both would hide most of the
+    large-cap short activity the section exists to show.
+    """
     if df.empty:
         return pd.DataFrame()
-    df = df[df["quantity"] > SHORT_MIN_QTY].copy()
+    df = df[df["quantity"] > min_qty].copy() if min_qty else df.copy()
     return df.sort_values("quantity", ascending=False).reset_index(drop=True)
 
 
@@ -403,7 +543,15 @@ def _client_rows(df: pd.DataFrame) -> pd.DataFrame:
     by_cs["side"] = by_cs.apply(_side, axis=1)
     by_cs["class"] = by_cs["client_name"].apply(_classify)
     by_cs["_ctot"] = by_cs.groupby("client_name")["vcr"].transform("sum")
-    by_cs = by_cs.sort_values(["_ctot", "vcr"], ascending=[False, False]).drop(columns="_ctot")
+    # Sort by client total desc, then value desc within client — but keep
+    # client_name as a tiebreaker so two clients with identical totals (e.g. the
+    # two custody legs of a symmetric basket cross) never interleave. The
+    # rowspan-merged Client column in _client_table_html requires each client's
+    # rows to be contiguous; without this tiebreaker the rows alternate and the
+    # table structure collapses.
+    by_cs = by_cs.sort_values(
+        ["_ctot", "client_name", "vcr"], ascending=[False, True, False]
+    ).drop(columns="_ctot")
     return by_cs.reset_index(drop=True)
 
 
@@ -496,7 +644,7 @@ def _highlights(bulk: pd.DataFrame, block: pd.DataFrame) -> list[dict]:
             gap_m = gap2 / 1e6
             cards.append({
                 "tag": "an asymmetric flow &mdash;",
-                "tag_color": _AMBER,
+                "tag_color": _WARN,
                 "title": (
                     f'{_e(sym2)} &nbsp;<span style="color:{_STONE}; font-style:italic;">·</span>&nbsp; '
                     f'<span style="font-variant-numeric:tabular-nums;">{gap_m:.1f}m</span>'
@@ -559,7 +707,7 @@ def _highlights(bulk: pd.DataFrame, block: pd.DataFrame) -> list[dict]:
                     action = "reduced" if n_side == "sell" else "added to"
                     cards.append({
                         "tag": f"a strategic {n_side} &mdash;",
-                        "tag_color": _BURGUNDY,
+                        "tag_color": _NAVY_SOFT,
                         "title": (
                             f'{_e(n_sym4)} &nbsp;<span style="color:{_STONE}; font-style:italic;">·</span>&nbsp; '
                             f'<span style="font-variant-numeric:tabular-nums;">{_fmt_cr(n_vcr)}</span>'
@@ -574,309 +722,315 @@ def _highlights(bulk: pd.DataFrame, block: pd.DataFrame) -> list[dict]:
     return cards[:5]
 
 
-# ─── HTML bar chart (email-safe — SVG not rendered by most email clients) ─────
+# ─── Derived-frame bundle ────────────────────────────────────────────────────
 
-def _svg_chart(top: pd.DataFrame) -> str:
-    """Horizontal bar chart rendered as a plain HTML table for email compatibility."""
+def _derive(
+    bulk: pd.DataFrame, block: pd.DataFrame, short: pd.DataFrame,
+    short_min_qty: int = SHORT_MIN_QTY,
+) -> dict:
+    """Runs every aggregation over one scope of deals.
+
+    Called twice per run — once for the comprehensive edition and once for the
+    market-cap-focused email body — so the two editions cannot drift apart in
+    how they compute totals.
+    """
+    return {
+        "bulk": bulk,
+        "block": block,
+        "short": short,
+        "metrics": _topline(bulk, block, short),
+        "bulk_sym": _sym_rows(bulk),
+        "block_sym": _sym_rows(block),
+        "short_filt": _short_rows(short, min_qty=short_min_qty),
+        "bulk_client": _client_rows(bulk),
+        "block_client": _client_rows(block),
+        "top": _top_names(bulk, block, n=10),
+        "highlights": _highlights(bulk, block),
+    }
+
+
+# ─── Presentation (BAC house style — see reports/design.py) ──────────────────
+
+def _bar_chart(top: pd.DataFrame) -> str:
+    """Horizontal bars built from table cells — no image, no CSS bar.
+
+    An <img> would be blocked by Outlook until the reader opts in, and a CSS bar
+    needs width on a div, which Word ignores. Nested cells with bgcolor are the
+    only construction that renders everywhere on first open.
+    """
     if top.empty:
         return ""
     max_val = float(top["value_cr"].max())
     if max_val <= 0:
         return ""
 
-    BAR_AREA_PX = 360
-
-    rows: list[str] = []
-    for i, row in enumerate(top.itertuples()):
-        bar_w = max(4, int(float(row.value_cr) / max_val * BAR_AREA_PX))
-        fill = _BURGUNDY if i == 0 else _INK
-        val_str = _fmt_cr(float(row.value_cr))
+    BAR_PX = 300
+    rows = []
+    for i, r in enumerate(top.itertuples()):
+        bar_w = max(3, int(float(r.value_cr) / max_val * BAR_PX))
+        fill = d.SERIES[0] if i else d.GOLD      # leader in gold, rest in navy
         rows.append(
             f'<tr>'
-            f'<td width="115" align="right" valign="middle" '
-            f'style="padding:4px 10px 4px 0; font-family:\'Times New Roman\',Times,serif; '
-            f'font-size:12px; font-weight:700; color:{_INK}; white-space:nowrap;">'
-            f'{_e(str(row.symbol))}</td>'
-            f'<td valign="middle" style="padding:4px 0;">'
-            f'<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
-            f'<td width="{bar_w}" height="18" bgcolor="{fill}" '
-            f'style="background:{fill}; height:18px; width:{bar_w}px; '
-            f'font-size:1px; line-height:1px;">&nbsp;</td>'
-            f'</tr></table>'
-            f'</td>'
-            f'<td width="90" valign="middle" '
-            f'style="padding:4px 0 4px 10px; font-family:\'Times New Roman\',Times,serif; '
-            f'font-size:12px; color:{_INK}; white-space:nowrap;">'
-            f'{val_str}&thinsp;cr</td>'
+            f'<td width="104" align="right" style="width:104px;'
+            f'{d.font(11.5, weight="bold")}padding:3px 9px 3px 0;white-space:nowrap;">'
+            f'{_e(str(r.symbol))}</td>'
+            f'<td style="padding:3px 0;">'
+            f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+            f'style="border-collapse:collapse;"><tr>'
+            f'<td width="{bar_w}" bgcolor="{fill}" style="width:{bar_w}px;height:13px;'
+            f'font-size:0;line-height:0;">&nbsp;</td>'
+            f'</tr></table></td>'
+            f'<td width="92" style="width:92px;{d.font(11.5, color=d.INK_SOFT)}'
+            f'padding:3px 0 3px 9px;white-space:nowrap;">{_fmt_cr(float(r.value_cr))}&nbsp;cr</td>'
             f'</tr>'
         )
-
     return (
-        f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
-        f'style="border-collapse:collapse; width:100%; max-width:565px;">'
-        + ''.join(rows)
-        + '</table>'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        f'border="0" style="border-collapse:collapse;">' + "".join(rows) + "</table>"
     )
 
 
 # ─── Section renderers ────────────────────────────────────────────────────────
 
-def _section_hdr(num: str, title: str, subtitle: str = "", desc: str = "") -> str:
-    sub_html = f'<td align="right" valign="baseline" style="font-family:\'Times New Roman\',Times,serif; font-size:12.5px; color:{_STONE}; font-style:italic;">{subtitle}</td>' if subtitle else ""
-    desc_html = f'<p style="font-family:\'Times New Roman\',Times,serif; font-size:13.5px; color:{_INK_SOFT}; margin:10px 0 0 0; line-height:1.55; max-width:540px;">{desc}</p>' if desc else ""
-    return f"""
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-  <tr><td style="padding:36px 36px 0 36px;">
-    <div style="border-top:1px solid {_TAN}; padding-top:24px;"></div>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-      <td valign="baseline">
-        <span style="font-family:'Times New Roman',Times,serif; font-size:46px; font-weight:400; color:{_BURGUNDY}; line-height:0.9; letter-spacing:-0.02em; font-style:italic;">{num}.</span>
-        <span style="font-family:'Times New Roman',Times,serif; font-size:30px; font-weight:500; color:{_INK}; letter-spacing:-0.012em; margin-left:14px;">{title}</span>
-      </td>
-      {sub_html}
-    </tr></table>
-    {desc_html}
-  </td></tr>
-</table>"""
+_ROMAN = ["", "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"]
 
 
-def _th(label: str, align: str = "left") -> str:
-    return (
-        f'<th align="{align}" style="padding:8px 10px 8px 12px; font-weight:600; font-size:9.5px; '
-        f'letter-spacing:0.2em; text-transform:uppercase; color:{_STONE}; border-bottom:1.5px solid {_INK};">'
-        f'{label}</th>'
+def _section(num: str, title: str, standfirst: str = "") -> str:
+    """The gold caption that heads every section, with an optional standfirst.
+
+    House convention: gold uppercase caption, explanation *after* the table as an
+    italic caption rather than before it.
+    """
+    head = f"{num} &middot; {title}" if num else title
+    out = (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f'<tr><td style="{d.font(10.5, color=d.GOLD, weight="bold", ls=1.6, upper=True)}'
+        f'padding:0 0 {"6px" if standfirst else "14px"} 0;">{head}</td></tr>'
     )
+    if standfirst:
+        out += (
+            f'<tr><td style="{d.font(10.5, color=d.INK_FAINT)}padding:0 0 14px 0;">'
+            f'{standfirst}</td></tr>'
+        )
+    return out + "</table>"
 
 
-def _sym_table_html(sym: pd.DataFrame, n_quartile: int = 0) -> str:
-    """Render a symbol-wise table (bulk or block style)."""
+def _sym_table_html(sym: pd.DataFrame, show_mcap: bool = False,
+                    source: str = "", caption: str = "") -> str:
+    """Per-symbol table (bulk or block).
+
+    `show_mcap` adds the index badge and a market-cap column — used by the
+    focused edition, where the reader needs to see why these names were picked.
+    """
     if sym.empty:
-        return f'<p style="color:{_STONE}; font-style:italic; font-family:\'Times New Roman\',Times,serif; font-size:13px; padding:0 36px;">No deals.</p>'
-    rows: list[str] = []
-    quartile_cut = sym.nlargest(max(1, n_quartile), "total_vcr")["symbol"].tolist() if n_quartile else []
-    for i, row in enumerate(sym.itertuples()):
-        sym_name = str(row.symbol)
-        sec_name = str(row.security_name or sym_name)
-        bq = int(getattr(row, "buy_qty", 0))
-        sq = int(getattr(row, "sell_qty", 0))
-        vcr = float(row.total_vcr)
-        flag = str(row.flag)
-        flag_color = _OLIVE if flag == "=" else _AMBER
-        has_rule = sym_name in quartile_cut
-        rule_style = f"border-left:3px solid {_BURGUNDY}; " if has_rule else ""
-        rows.append(
-            f'<tr>'
-            f'<td style="padding:7px 10px 7px 12px; border-bottom:1px solid {_SAND}; {rule_style}'
-            f'font-weight:600; color:{_INK}; font-family:\'Times New Roman\',Times,serif; font-size:13px;">{_e(sym_name)}</td>'
-            f'<td style="padding:7px 10px; border-bottom:1px solid {_SAND}; '
-            f'font-family:\'Times New Roman\',Times,serif; font-style:italic; color:{_INK_SOFT};">{_e(sec_name)}</td>'
-            f'<td align="right" style="padding:7px 6px; border-bottom:1px solid {_SAND};">{_fmt_qty(bq)}</td>'
-            f'<td align="right" style="padding:7px 6px; border-bottom:1px solid {_SAND};">{_fmt_qty(sq)}</td>'
-            f'<td align="right" style="padding:7px 10px; border-bottom:1px solid {_SAND}; font-weight:600;">{_fmt_cr(vcr)}</td>'
-            f'<td align="center" style="padding:7px 12px 7px 6px; border-bottom:1px solid {_SAND}; '
-            f'color:{flag_color};">{flag}</td>'
-            f'</tr>'
+        return d.datatable([], [], empty="No deals in scope.")
+
+    cols = ["Symbol", "Security"] + (["Mkt cap"] if show_mcap else []) + \
+           ["Buy qty", "Sell qty", "&#8377; cr", ""]
+    align = ["l", "l"] + (["r"] if show_mcap else []) + ["r", "r", "r", "c"]
+
+    rows = []
+    for r in sym.itertuples():
+        s = str(r.symbol)
+        flag = str(r.flag)
+        # A crossed deal is clean, an asymmetric one is worth a second look —
+        # that is a judgement, so it takes the semantic pair.
+        flag_html = (
+            f'<span style="color:{_GOOD};font-weight:bold;">=</span>' if flag == "="
+            else f'<span style="color:{_WARN};font-weight:bold;">&#9650;</span>'
         )
-    thead = (
-        f'<tr>'
-        + _th("Symbol") + _th("Security") + _th("Buy", "right")
-        + _th("Sell", "right") + _th("₹ Cr", "right") + _th("Flag", "center")
-        + '</tr>'
-    )
-    return (
-        f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        f'style="border-collapse:collapse; font-family:\'Times New Roman\',Times,serif; '
-        f'font-size:12.5px; font-variant-numeric:tabular-nums;">'
-        f'<thead>{thead}</thead><tbody>{"".join(rows)}</tbody></table>'
-        f'<div style="font-family:\'Times New Roman\',Times,serif; font-size:11.5px; color:{_STONE}; padding:10px 2px 0 2px; font-style:italic;">'
-        f'<span style="color:{_OLIVE}; font-weight:500;">=</span>&nbsp;crossed (buy equals sell)'
-        f'&nbsp;·&nbsp;<span style="color:{_AMBER}; font-weight:500;">▲</span>&nbsp;asymmetric'
-        f'&nbsp;·&nbsp;ruled left edge marks the top quartile by value</div>'
-    )
+        row = [f'<strong>{_e(s)}</strong>{_index_badge(s) if show_mcap else ""}',
+               f'<span style="color:{_INK_SOFT};">{_e(str(r.security_name or s))}</span>']
+        if show_mcap:
+            row.append(_fmt_mcap(s))
+        row += [
+            _fmt_qty(int(getattr(r, "buy_qty", 0))),
+            _fmt_qty(int(getattr(r, "sell_qty", 0))),
+            f'<strong>{_fmt_cr(float(r.total_vcr))}</strong>',
+            flag_html,
+        ]
+        rows.append(row)
+
+    return d.datatable(cols, rows, align=align, source=source, caption=caption)
 
 
-def _short_table_html(short: pd.DataFrame) -> str:
+def _fmt_notional(qty: int, symbol: str) -> str:
+    """Indicative rupee value of a short position, from the last known close.
+
+    The short-selling feed carries no price, so without this a reader cannot
+    compare 20,000 shares of one name against 600 of another. Marked indicative
+    because the price is the security master's, not the trade date's.
+    """
+    px = sm.last_price(symbol)
+    if not px or not qty:
+        return f'<span style="color:{_STONE};">{d.EM_DASH}</span>'
+    val_cr = qty * px / 1e7
+    if val_cr >= 1:
+        return f"&#8377;&nbsp;{val_cr:,.1f}&nbsp;cr"
+    lakh = qty * px / 1e5
+    if lakh >= 1:
+        return f"&#8377;&nbsp;{lakh:,.1f}&nbsp;L"
+    return f"&#8377;&nbsp;{qty * px:,.0f}"
+
+
+def _short_table_html(short: pd.DataFrame, show_mcap: bool = False,
+                      source: str = "", caption: str = "") -> str:
     if short.empty:
-        return f'<p style="color:{_STONE}; font-style:italic; font-family:\'Times New Roman\',Times,serif; font-size:13px; padding:0 36px;">No qualifying positions.</p>'
-    rows: list[str] = []
-    for _, row in short.iterrows():
-        sym = str(row.get("symbol", ""))
-        sec = str(row.get("security_name", sym) or sym)
-        qty = int(row.get("quantity", 0))
-        rows.append(
-            f'<tr>'
-            f'<td style="padding:7px 10px 7px 12px; border-bottom:1px solid {_SAND}; '
-            f'font-weight:600; color:{_INK}; font-family:\'Times New Roman\',Times,serif; font-size:13px;">{_e(sym)}</td>'
-            f'<td style="padding:7px 10px; border-bottom:1px solid {_SAND}; '
-            f'font-family:\'Times New Roman\',Times,serif; font-style:italic; color:{_INK_SOFT};">{_e(sec)}</td>'
-            f'<td align="right" style="padding:7px 10px; border-bottom:1px solid {_SAND};">{qty:,}</td>'
-            f'</tr>'
-        )
-    thead = f'<tr>{_th("Symbol")}{_th("Security")}{_th("Quantity", "right")}</tr>'
-    return (
-        f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        f'style="border-collapse:collapse; font-family:\'Times New Roman\',Times,serif; font-size:12.5px; font-variant-numeric:tabular-nums;">'
-        f'<thead>{thead}</thead><tbody>{"".join(rows)}</tbody></table>'
-    )
+        return d.datatable([], [], empty="No qualifying positions.")
+
+    # The focused edition drops the share-count floor, so order by rupee value
+    # instead — otherwise a 20,000-share position in a small cap outranks a
+    # materially larger position in a mega cap.
+    if show_mcap:
+        short = short.copy()
+        short["_notional"] = [
+            (sm.last_price(str(s)) or 0) * float(q or 0)
+            for s, q in zip(short["symbol"], short["quantity"])
+        ]
+        short = short.sort_values("_notional", ascending=False).reset_index(drop=True)
+
+    cols = ["Symbol", "Security"] + (["Mkt cap"] if show_mcap else []) + \
+           ["Quantity"] + (["&#8776; value"] if show_mcap else [])
+    align = ["l", "l"] + (["r"] if show_mcap else []) + ["r"] + (["r"] if show_mcap else [])
+
+    rows = []
+    for _, r in short.iterrows():
+        s = str(r.get("symbol", ""))
+        qty = int(r.get("quantity", 0))
+        row = [f'<strong>{_e(s)}</strong>{_index_badge(s) if show_mcap else ""}',
+               f'<span style="color:{_INK_SOFT};">{_e(str(r.get("security_name", s) or s))}</span>']
+        if show_mcap:
+            row.append(_fmt_mcap(s))
+        row.append(f"{qty:,}")
+        if show_mcap:
+            row.append(f'<strong>{_fmt_notional(qty, s)}</strong>')
+        rows.append(row)
+
+    return d.datatable(cols, rows, align=align, source=source, caption=caption)
 
 
-def _client_table_html(client: pd.DataFrame) -> str:
+def _client_table_html(client: pd.DataFrame, show_badge: bool = False,
+                       source: str = "", caption: str = "") -> str:
+    """One row per client-symbol pair.
+
+    The client column repeats as a blank on continuation rows rather than using
+    rowspan: Word's engine mishandles rowspan inside a nested presentation table,
+    and a blank continuation reads the same without the risk.
+    """
     if client.empty:
-        return f'<p style="color:{_STONE}; font-style:italic; font-family:\'Times New Roman\',Times,serif; font-size:13px; padding:0 36px;">No client data.</p>'
+        return d.datatable([], [], empty="No client data.")
 
-    rows: list[str] = []
-    clients_seen: dict[str, int] = {}
-    # Pre-compute rowspan per client
-    rowspan: dict[str, int] = client.groupby("client_name").size().to_dict()
+    rows = []
+    prev = None
+    for _, r in client.iterrows():
+        cn = str(r["client_name"])
+        s = str(r["symbol"])
+        first = cn != prev
+        rows.append([
+            (f'<strong>{_e(cn)}</strong>' if first
+             else f'<span style="color:{_STONE};">&#8942;</span>'),
+            _tag_html(str(r["class"])),
+            f'{_e(s)}{_index_badge(s) if show_badge else ""}',
+            _side_html(str(r["side"])),
+            f'{int(r["qty"]):,}',
+            f'<strong>{_fmt_cr(float(r["vcr"]))}</strong>',
+        ])
+        prev = cn
 
-    prev_client = None
-    for _, row in client.iterrows():
-        cn = str(row["client_name"])
-        sym = str(row["symbol"])
-        sec = str(row.get("security_name", sym) or sym)
-        side = str(row["side"])
-        qty = int(row["qty"])
-        vcr = float(row["vcr"])
-        cls = str(row["class"])
-        n_syms = rowspan.get(cn, 1)
-
-        is_group_end = (
-            cn != prev_client and
-            n_syms > 1
-        )
-
-        # Border between client groups
-        border_color = _TAN if cn != prev_client and prev_client is not None else _SAND
-
-        client_cell = ""
-        if cn != prev_client:
-            clients_seen[cn] = 0
-            rs = rowspan[cn]
-            rs_attr = f' rowspan="{rs}"' if rs > 1 else ""
-            subtitle = ""
-            if rs > 1:
-                # Count unique symbols
-                subtitle = (
-                    f'<div style="font-size:10.5px; color:{_STONE}; font-style:italic; margin-top:2px;">'
-                    f'{rs} position{"s" if rs > 1 else ""}</div>'
-                )
-            bg = f"background:{_WARM_GREY}; " if rs > 1 else ""
-            client_cell = (
-                f'<td{rs_attr} valign="top" style="padding:8px 10px 6px 12px; '
-                f'border-bottom:1px solid {border_color}; {bg}'
-                f'font-family:\'Times New Roman\',Times,serif;">'
-                f'<div style="color:{_INK}; font-weight:500;">{_e(cn)}</div>'
-                f'{subtitle}</td>'
-            )
-        clients_seen[cn] = clients_seen.get(cn, 0) + 1
-        b_col = _TAN if clients_seen.get(cn, 1) == n_syms else _SAND
-
-        rows.append(
-            f'<tr>'
-            f'{client_cell}'
-            f'<td align="center" style="padding:6px 4px; border-bottom:1px solid {b_col};">{_tag_html(cls)}</td>'
-            f'<td style="padding:6px 10px; border-bottom:1px solid {b_col}; font-weight:600;">{_e(sym)}</td>'
-            f'<td align="right" style="padding:6px 4px; border-bottom:1px solid {b_col};">{_side_html(side)}</td>'
-            f'<td align="right" style="padding:6px 6px; border-bottom:1px solid {b_col}; font-variant-numeric:tabular-nums;">{qty:,}</td>'
-            f'<td align="right" style="padding:6px 12px 6px 10px; border-bottom:1px solid {b_col}; font-weight:600;">{_fmt_cr(vcr)}</td>'
-            f'</tr>'
-        )
-        prev_client = cn
-
-    thead = (
-        f'<tr>'
-        + _th("Client", "left")
-        + f'<th align="center" style="padding:8px 4px; font-weight:600; font-size:9.5px; letter-spacing:0.2em; text-transform:uppercase; color:{_STONE}; border-bottom:1.5px solid {_INK};">Class</th>'
-        + _th("Symbol", "left") + _th("Side", "right")
-        + _th("Qty", "right") + _th("₹ Cr", "right")
-        + '</tr>'
+    return d.datatable(
+        ["Client", "Class", "Symbol", "Side", "Qty", "&#8377; cr"],
+        rows,
+        align=["l", "c", "l", "c", "r", "r"],
+        source=source,
+        caption=caption,
     )
-    legend = (
-        f'<div style="font-family:\'Times New Roman\',Times,serif; font-size:12px; color:{_INK_SOFT}; padding:14px 2px 0 2px; line-height:1.7;">'
-        f'<span style="font-style:italic; color:{_STONE};">Class tags &mdash;</span>'
-        f'&nbsp;<b style="font-weight:500;">FII</b> foreign portfolio investor,'
-        f'&nbsp;<b style="font-weight:500;">DII/MF</b> domestic mutual fund or insurer,'
-        f'&nbsp;<b style="font-weight:500;">AIF</b> alternative investment fund,'
-        f'&nbsp;<b style="font-weight:500;">HFT</b> high-frequency / quant prop,'
-        f'&nbsp;<b style="font-weight:500;">PROP</b> proprietary trading,'
-        f'&nbsp;<b style="font-weight:500;">CORP</b> corporate,'
-        f'&nbsp;<b style="font-weight:500;">STRAT</b> strategic or promoter,'
-        f'&nbsp;<b style="font-weight:500;">HNI</b> individual,'
-        f'&nbsp;<b style="font-weight:500;">TRUST</b> family office or trust.'
-        f'</div>'
-    )
+
+
+_CLASS_LEGEND = (
+    "Class tags &mdash; <b>FII</b> foreign portfolio investor, <b>DII/MF</b> domestic "
+    "mutual fund or insurer, <b>AIF</b> alternative investment fund, <b>HFT</b> "
+    "high-frequency or quant prop, <b>PROP</b> proprietary trading, <b>BRKR</b> broker, "
+    "<b>CORP</b> corporate, <b>STRAT</b> strategic or promoter, <b>HNI</b> individual, "
+    "<b>TRUST</b> family office or trust."
+)
+
+
+# ─── Editorial blocks ────────────────────────────────────────────────────────
+
+def _highlights_html(cards: list[dict]) -> str:
+    """The 'things that matter' gold callout."""
+    if not cards:
+        return ""
+    items = [
+        (_strip_html(c.get("title", "")), _strip_html(c.get("body", "")))
+        for c in cards[:4]
+    ]
+    inner = d.numbered_list(items)
     return (
-        f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        f'style="border-collapse:collapse; font-family:\'Times New Roman\',Times,serif; font-size:12px; font-variant-numeric:tabular-nums;">'
-        f'<thead>{thead}</thead><tbody>{"".join(rows)}</tbody></table>'
-        + legend
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+        f'style="background-color:{d.GOLD_PALE};border-left:4px solid {d.GOLD};">'
+        f'<tr><td style="padding:12px 14px;">'
+        f'{d.caption_title("Things that matter today")}{inner}'
+        f'</td></tr></table>'
     )
+
+
+def _scope_banner(
+    focus_symbols: list[str],
+    full_metrics: dict,
+    n_full_names: int,
+    basis: str = "market_cap",
+) -> str:
+    """Explains the focused edition's scope and points at the attached PDF.
+
+    Without this the reader cannot tell a quiet session from a filtered one —
+    the single most important thing to be honest about in a scoped report.
+    """
+    fbm, fbkm = full_metrics["bulk"], full_metrics["block"]
+    n50 = sum(1 for s in focus_symbols if sm.is_nifty50(s))
+
+    if focus_symbols and basis == "value":
+        lead = (
+            f'Each section below carries its own {len(focus_symbols)} largest positions '
+            f'<strong>by deal size</strong>, not by market capitalisation &mdash; no '
+            f'market-cap data was available for today&rsquo;s names, so the usual '
+            f'ranking could not be applied.'
+        )
+    elif focus_symbols:
+        lead = (
+            f'Each section below carries its own ten largest companies by market '
+            f'capitalisation &mdash; {len(focus_symbols)} distinct names in all'
+            + (f', {n50} of them NIFTY50 constituents' if n50 else '')
+            + '. Sections are ranked independently because the biggest names in the '
+            'short-selling feed are rarely the ones with reportable bulk or block deals.'
+        )
+    elif n_full_names == 0:
+        lead = 'No bulk, block or short-selling activity was reported for this session.'
+    else:
+        lead = (
+            f'None of today&rsquo;s {n_full_names} names could be ranked by market '
+            f'capitalisation &mdash; the security master needs a refresh.'
+        )
+
+    body = (
+        f'{lead} Across the whole market the session carried '
+        f'<strong>{fbm["deals"]}</strong> bulk deal{"" if fbm["deals"] == 1 else "s"} in '
+        f'<strong>{fbm["names"]}</strong> name{"" if fbm["names"] == 1 else "s"} '
+        f'({_fmt_cr(fbm["value_cr"])}&nbsp;cr) and '
+        f'<strong>{fbkm["deals"]}</strong> block deal{"" if fbkm["deals"] == 1 else "s"} in '
+        f'<strong>{fbkm["names"]}</strong> name{"" if fbkm["names"] == 1 else "s"} '
+        f'({_fmt_cr(fbkm["value_cr"])}&nbsp;cr).'
+    )
+    return d.callout(body, accent="navy", title="What you are reading")
 
 
 # ─── Full HTML assembly ───────────────────────────────────────────────────────
 
-def _highlights_html(cards: list[dict]) -> str:
-    if not cards:
-        return ""
-
-    def _card(c: dict, style: str = "") -> str:
-        tag_color = c.get("tag_color", _INK)
-        tag_right = c.get("tag_right", "")
-        tag_right_html = (
-            f'<td align="right" valign="top" style="font-family:\'Times New Roman\',Times,serif; '
-            f'font-size:10px; letter-spacing:0.22em; text-transform:uppercase; '
-            f'color:{_STONE}; font-weight:500;">{tag_right}</td>'
-        ) if tag_right else ""
-        return f"""
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="{style}">
-<tr><td style="padding:20px 24px 22px 24px;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-    <td valign="top" style="font-family:'Times New Roman',Times,serif; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:{tag_color}; font-weight:600;">{c['tag']}</td>
-    {tag_right_html}
-  </tr></table>
-  <div style="font-family:'Times New Roman',Times,serif; font-size:{'34px' if c.get('lead') else '22px'}; font-weight:500; color:{_INK}; margin-top:10px; line-height:1.05; letter-spacing:-0.012em;">
-    {c['title']}
-  </div>
-  <p style="font-family:'Times New Roman',Times,serif; font-size:{'15px' if c.get('lead') else '13.5px'}; color:{_INK}; line-height:1.55; margin:14px 0 0 0;">
-    {c['body']}
-  </p>
-</td></tr>
-</table>"""
-
-    lead_card_style = (
-        f"background:{_CREAM}; border:1px solid {_TAN}; border-left:4px solid {_BURGUNDY};"
-    )
-    small_card_style = f"background:{_CREAM}; border:1px solid {_TAN}; height:100%;"
-
-    lead_html = _card(cards[0], lead_card_style) if cards else ""
-    small_cards = cards[1:]
-
-    # Arrange remaining cards in rows of 2
-    grid_rows_html = ""
-    for i in range(0, len(small_cards), 2):
-        pair = small_cards[i:i + 2]
-        left_html = f'<td width="50%" valign="top" style="padding:0 7px 14px 0;">{_card(pair[0], small_card_style)}</td>'
-        right_html = (
-            f'<td width="50%" valign="top" style="padding:0 0 14px 7px;">{_card(pair[1], small_card_style)}</td>'
-            if len(pair) > 1 else '<td width="50%"></td>'
-        )
-        grid_rows_html += f'<tr>{left_html}{right_html}</tr>'
-
-    grid_html = (
-        f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:14px;">'
-        f'{grid_rows_html}'
-        f'</table>'
-    ) if grid_rows_html else ""
-
-    return f"""
-<a name="highlights"></a>
-{_section_hdr("i", "Five things worth knowing", "a quick scan of the day")}
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-  <tr><td style="padding:16px 36px 8px 36px;">
-    {lead_html}
-    {grid_html}
-  </td></tr>
-</table>"""
+_DISCLAIMER = (
+    "Internal research document. Generated automatically from NSE exchange files. "
+    "All figures are prior-session end-of-day vintage; there is no intraday data "
+    "path in this build. Not investment advice."
+)
 
 
 def _build_html(
@@ -893,256 +1047,239 @@ def _build_html(
     metrics: dict,
     highlights: list[dict],
     generated_at: datetime,
+    edition: str = EDITION_FULL,
+    focus_symbols: list[str] | None = None,
+    full_metrics: dict | None = None,
+    n_full_names: int = 0,
+    short_min_qty: int = SHORT_MIN_QTY,
+    focus_basis: str = "market_cap",
 ) -> str:
-    bm = metrics["bulk"]
-    bkm = metrics["block"]
-    sm = metrics["short"]
-
-    n_bulk_names = bm["names"]
-    n_block_names = bkm["names"]
-    n_bulk_sym = len(bulk_sym) if not bulk_sym.empty else 0
-    n_block_sym = len(block_sym) if not block_sym.empty else 0
-
-    # Approximate issue number: trading days from 2026-01-01
-    try:
-        delta = (report_date - date(2026, 1, 1)).days
-        trading_days_approx = max(1, int(delta * 5 / 7))
-        issue_num = trading_days_approx
-    except Exception:
-        issue_num = 1
+    bm, bkm, shm = metrics["bulk"], metrics["block"], metrics["short"]
+    is_focus = edition == EDITION_FOCUS
+    focus_symbols = focus_symbols or []
 
     import pytz
-    _ist = pytz.timezone("Asia/Kolkata")
-    _gen_ist = generated_at.astimezone(_ist)
-    gen_time_str = _gen_ist.strftime("%H:%M IST on the ")
-    gen_day_str = _ordinal(_gen_ist.day)
-    gen_month = _gen_ist.strftime("%B, %Y")
+    gen_ist = generated_at.astimezone(pytz.timezone("Asia/Kolkata"))
 
-    svg = _svg_chart(top)
-    chart_html = svg or (
-        f'<p style="color:{_STONE}; font-style:italic; '
-        f"font-family:'Times New Roman',Times,serif;"
-        f'">No value data available.</p>'
+    def _n(count: int, word: str) -> str:
+        return f"{count} {word}{'' if count == 1 else 's'}"
+
+    # ── Masthead ─────────────────────────────────────────────────────────────
+    if is_focus:
+        edition_label = "Focus edition"
+        scope = (
+            "Scoped to the largest companies by market capitalisation in each "
+            "section. The comprehensive record is attached as a PDF."
+        )
+    else:
+        edition_label = "Comprehensive edition"
+        scope = (
+            "Every bulk, block and short-selling record reported for the session, "
+            "unfiltered."
+        )
+
+    head = d.masthead(
+        kicker="Brindco Alpha Capital &middot; Quant Desk",
+        title="Daily Deals",
+        dateline=f"<strong>{_house_date(report_date)}</strong> &middot; {edition_label}",
+        subline=(
+            f"National Stock Exchange of India &middot; generated "
+            f"{gen_ist.strftime('%d-%b-%Y %H:%M')} IST"
+        ),
+        scope=scope,
     )
-    hlights_html = _highlights_html(highlights)
 
-    # Nav strip items
-    nav_items = [
-        ('<a href="#highlights" style="color:{c}; text-decoration:none;">Highlights</a>', True),
-        ('<a href="#symbols" style="color:{c}; text-decoration:none;">Bulk Symbols</a>', not bulk_sym.empty),
-        ('<a href="#blocks" style="color:{c}; text-decoration:none;">Block Symbols</a>', not block_sym.empty),
-        ('<a href="#shorts" style="color:{c}; text-decoration:none;">Shorts</a>', not short_filt.empty),
-        ('<a href="#clients" style="color:{c}; text-decoration:none;">Clients</a>', not bulk_client.empty),
+    # ── Topline ──────────────────────────────────────────────────────────────
+    kpis = [
+        {"label": "Bulk deals",
+         "value": f"{_fmt_cr(bm['value_cr'])}<span style=\"font-size:13px;color:{_STONE};\"> cr</span>",
+         "sub": f"{_n(bm['deals'], 'deal')}, {_n(bm['names'], 'name')}"},
+        {"label": "Block deals",
+         "value": f"{_fmt_cr(bkm['value_cr'])}<span style=\"font-size:13px;color:{_STONE};\"> cr</span>",
+         "sub": f"{_n(bkm['deals'], 'deal')}, {_n(bkm['names'], 'name')}"},
+        {"label": "Short selling",
+         "value": f"{shm['deals']}<span style=\"font-size:13px;color:{_STONE};\"> positions</span>",
+         "sub": ("all sizes shown" if not short_min_qty
+                 else f"{shm['above_threshold']} over threshold")},
     ]
-    nav_html = (
-        f' <span style="color:{_TAN}; margin:0 9px;">/</span> '
-    ).join(
-        item.format(c=_INK)
-        for item, show in nav_items if show
+
+    body = head
+    body += d.row(d.kpi_grid(kpis), pad=d.BLOCK_PAD)
+
+    if is_focus:
+        body += d.row(
+            _scope_banner(focus_symbols, full_metrics or metrics, n_full_names, focus_basis),
+            pad=d.BLOCK_PAD,
+        )
+
+    hl = _highlights_html(highlights)
+    if hl:
+        body += d.row(hl, pad=d.BLOCK_PAD)
+
+    # ── ii · Top names by value ──────────────────────────────────────────────
+    chart = _bar_chart(top)
+    if chart:
+        body += d.row(
+            _section("II", "Top names by value", "bulk and block combined")
+            + chart
+            + f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+              f'<tr><td style="{d.font(10, color=_INK_SOFT, italic=True, leading=16)}'
+              f'text-align:justify;padding:14px 0 0 0;">The larger of the buy or sell '
+              f'side is shown per name, so a crossed deal counts once.'
+              f'{" Scoped to the focus names." if is_focus else ""}</td></tr></table>'
+        )
+
+    src = f"NSE archives &middot; as of {_house_date(report_date)}"
+
+    # ── iii · Bulk by symbol ─────────────────────────────────────────────────
+    body += d.row(
+        _section("III", "Bulk deals, by symbol",
+                 f"{_n(len(bulk_sym), 'name')} &middot; sorted by value")
+        + _sym_table_html(
+            bulk_sym, show_mcap=is_focus, source=src,
+            caption=("Triangle marks asymmetric quantities; equals marks a clean "
+                     "crossed deal." +
+                     (" A bulk deal needs 0.5% of traded quantity to be reportable, "
+                      "so large caps appear here only rarely." if is_focus else "")),
+        )
     )
 
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BAC Daily Deals — NSE — {report_date.day} {report_date.strftime('%b %Y')}</title>
-<style>
-.num-tab {{ font-variant-numeric: tabular-nums; }}
-  a {{ color: inherit; }}
-</style>
-</head>
-<body style="margin:0; padding:28px 12px; background:{_SAND}; font-family:'Times New Roman',Times,serif; color:{_INK}; -webkit-font-smoothing:antialiased;">
+    # ── iv · Block by symbol ─────────────────────────────────────────────────
+    body += d.row(
+        _section("IV", "Block deals, by symbol",
+                 f"{_n(len(block_sym), 'name')} &middot; pre-open window")
+        + _sym_table_html(
+            block_sym, show_mcap=is_focus, source=src,
+            caption="Negotiated trades in the pre-open block window, 08:45&ndash;09:00 IST.",
+        )
+    )
 
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" width="760" style="width:760px; max-width:760px; margin:0 auto; background:{_PARCHMENT}; border:1px solid {_TAN};">
-<tr><td style="padding:0;">
+    # ── v · Shorts ───────────────────────────────────────────────────────────
+    body += d.row(
+        _section("V",
+                 "Short selling, by value" if is_focus else "Short selling, by quantity",
+                 ("all positions in these names" if is_focus
+                  else ("every reported position" if not short_min_qty
+                        else f"positions &#8805; {short_min_qty:,} shares")))
+        + _short_table_html(
+            short_filt, show_mcap=is_focus, source=src,
+            caption=(
+                "Every intraday short position in these names, whatever the size &mdash; "
+                "the five-thousand-share floor used market-wide would hide most "
+                "large-cap activity, since the same share count is far more money in a "
+                "mega cap. Ordered by indicative rupee value, priced at the last known "
+                "close: the feed itself carries neither price nor client information."
+                if is_focus else
+                "Source feed carries no client information."
+            ),
+        )
+    )
 
-  <!-- MASTHEAD -->
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:{_PARCHMENT};">
-    <tr><td style="padding:30px 36px 6px 36px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-        <td valign="middle" style="padding:0;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-            <td style="font-family:'Times New Roman',Times,serif; font-size:10.5px; letter-spacing:0.32em; text-transform:uppercase; color:{_BURGUNDY}; font-weight:500;">Brindco Alpha Capital</td>
-            <td style="padding:0 10px; color:{_TAN}; font-size:12px;">◆</td>
-            <td style="font-family:'Times New Roman',Times,serif; font-size:11px; font-style:italic; color:{_STONE}; font-weight:400;">a daily note from the quant desk</td>
-          </tr></table>
-        </td>
-        <td align="right" valign="middle" style="font-family:'Times New Roman',Times,serif; font-size:11px; color:{_STONE}; font-style:italic;">
-          № {issue_num}
-        </td>
-      </tr></table>
+    # ── vi · Bulk by client ──────────────────────────────────────────────────
+    body += d.row(
+        _section("VI", "Bulk deals, by client", "who was on the other side")
+        + _client_table_html(
+            bulk_client, show_badge=is_focus, source=src,
+            caption="One row per client&ndash;symbol pair, ordered by client total "
+                    "value descending. " + _CLASS_LEGEND,
+        )
+    )
 
-      <div style="font-family:'Times New Roman',Times,serif; font-size:54px; font-weight:500; color:{_INK}; letter-spacing:-0.018em; margin:14px 0 0 0; line-height:1;">Daily&nbsp;Deals</div>
-      <div style="font-family:'Times New Roman',Times,serif; font-size:20px; font-weight:400; color:{_INK}; font-style:italic; margin:2px 0 18px 2px; line-height:1;">National Stock Exchange of India</div>
+    # ── vii · Block by client ────────────────────────────────────────────────
+    body += d.row(
+        _section("VII", "Block deals, by client",
+                 f"{_n(bkm['deals'], 'deal')} &middot; pre-open window")
+        + _client_table_html(block_client, show_badge=is_focus, source=src)
+    )
 
-      <div style="border-top:3px solid {_INK}; padding-top:1px;"></div>
-      <div style="border-top:1px solid {_INK}; margin-top:2px;"></div>
+    # ── Attachment note ──────────────────────────────────────────────────────
+    if is_focus:
+        body += d.row(
+            d.callout(
+                f"The comprehensive edition &mdash; every deal in all {n_full_names} "
+                f"names, with no market-cap filter and no size floor &mdash; is attached "
+                f"to this message as a PDF, together with the raw bulk, block and "
+                f"short-selling CSVs. Nothing shown here is dropped from that record, "
+                f"only deferred.",
+                accent="navy",
+            ),
+            pad=f"20px {d.PAD_X}px 0 {d.PAD_X}px",
+        )
 
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:12px;">
-        <tr>
-          <td valign="top" style="font-family:'Times New Roman',Times,serif; font-size:13.5px; color:{_INK};">
-            {_long_date(report_date)}
-          </td>
-          <td align="right" valign="top" style="font-family:'Times New Roman',Times,serif; font-size:10.5px; letter-spacing:0.22em; text-transform:uppercase; color:{_STONE};">
-            Mumbai · IST
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
+    # ── Colophon ─────────────────────────────────────────────────────────────
+    provenance = (
+        f"NSE archives &middot; bulk, block and short feeds &middot; notional values "
+        f"from the WATP column"
+    )
+    if is_focus:
+        provenance += (
+            " &middot; index membership from the NSE constituent files &middot; "
+            "market capitalisation from Screener.in"
+        )
+    body += d.row(d.colophon(provenance, _DISCLAIMER))
 
-  <!-- TOPLINE METRICS -->
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-    <tr><td style="padding:18px 36px 6px 36px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:{_WARM_GREY}; border-top:1px solid {_TAN}; border-bottom:1px solid {_TAN};">
-        <tr>
-          <td width="33%" valign="top" style="padding:14px 14px 14px 18px; border-right:1px solid {_TAN};">
-            <div style="font-family:'Times New Roman',Times,serif; font-size:9.5px; letter-spacing:0.24em; text-transform:uppercase; color:{_STONE}; font-weight:500;">Bulk Deals</div>
-            <div style="font-family:'Times New Roman',Times,serif; font-size:28px; font-weight:500; color:{_INK}; font-variant-numeric:tabular-nums; margin-top:6px; line-height:1; letter-spacing:-0.01em;">{_fmt_cr(bm['value_cr'])}<span style="font-size:14px; color:{_STONE}; font-style:italic; font-weight:400; margin-left:3px;">cr</span></div>
-            <div style="font-family:'Times New Roman',Times,serif; font-size:12px; color:{_STONE}; margin-top:6px; font-style:italic;">{bm['deals']} deals, {bm['names']} names</div>
-          </td>
-          <td width="33%" valign="top" style="padding:14px 14px 14px 16px; border-right:1px solid {_TAN};">
-            <div style="font-family:'Times New Roman',Times,serif; font-size:9.5px; letter-spacing:0.24em; text-transform:uppercase; color:{_STONE}; font-weight:500;">Block Deals</div>
-            <div style="font-family:'Times New Roman',Times,serif; font-size:28px; font-weight:500; color:{_INK}; font-variant-numeric:tabular-nums; margin-top:6px; line-height:1; letter-spacing:-0.01em;">{_fmt_cr(bkm['value_cr'])}<span style="font-size:14px; color:{_STONE}; font-style:italic; font-weight:400; margin-left:3px;">cr</span></div>
-            <div style="font-family:'Times New Roman',Times,serif; font-size:12px; color:{_STONE}; margin-top:6px; font-style:italic;">{bkm['deals']} deals, {bkm['names']} names</div>
-          </td>
-          <td width="34%" valign="top" style="padding:14px 18px 14px 16px;">
-            <div style="font-family:'Times New Roman',Times,serif; font-size:9.5px; letter-spacing:0.24em; text-transform:uppercase; color:{_STONE}; font-weight:500;">Short Selling <span style="font-style:italic; letter-spacing:0; text-transform:none; font-family:'Times New Roman',Times,serif; font-weight:400;">(qty&nbsp;≥&nbsp;5k)</span></div>
-            <div style="font-family:'Times New Roman',Times,serif; font-size:28px; font-weight:500; color:{_INK}; font-variant-numeric:tabular-nums; margin-top:6px; line-height:1; letter-spacing:-0.01em;">{sm['deals']}<span style="font-size:14px; color:{_STONE}; font-style:italic; font-weight:400; margin-left:3px;">deals</span></div>
-            <div style="font-family:'Times New Roman',Times,serif; font-size:12px; color:{_STONE}; margin-top:6px; font-style:italic;">{sm['above_threshold']} over threshold</div>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-
-  <!-- NAV STRIP -->
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-    <tr><td style="padding:4px 36px 0 36px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-        <td style="padding:14px 0; font-family:'Times New Roman',Times,serif; font-size:10.5px; letter-spacing:0.20em; text-transform:uppercase; color:{_INK};">
-          {nav_html}
-        </td>
-        <td align="right" style="font-family:'Times New Roman',Times,serif; font-size:12px; font-style:italic; color:{_STONE};">data from NSE archives</td>
-      </tr></table>
-    </td></tr>
-  </table>
-
-  {hlights_html}
-
-  <!-- SECTION ii — TOP NAMES BY VALUE -->
-  <a name="summary"></a>
-  {_section_hdr("ii", "Top names by value", "where the rupees actually went",
-    "Bulk and block combined, the larger of buy/sell side shown per name.")}
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-    <tr><td style="padding:22px 36px 4px 36px;">
-      {chart_html}
-    </td></tr>
-  </table>
-
-  <!-- SECTION iii — BULK BY SYMBOL -->
-  <a name="symbols"></a>
-  {_section_hdr("iii", "Bulk Deals, by symbol",
-    f"{n_bulk_names} name{'s' if n_bulk_names != 1 else ''} · sorted by value",
-    "What moved, by name. Triangle marks asymmetric quantities; equals marks a clean crossed deal.")}
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-    <tr><td style="padding:18px 36px 6px 36px;">
-      {_sym_table_html(bulk_sym, n_quartile=max(1, len(bulk_sym) // 4))}
-    </td></tr>
-  </table>
-
-  <!-- SECTION iv — BLOCK BY SYMBOL -->
-  <a name="blocks"></a>
-  {_section_hdr("iv", "Block Deals, by symbol",
-    f"{n_block_names} name{'s' if n_block_names != 1 else ''} · block window",
-    "Negotiated trades in the pre-open block window (08:45–09:00 IST).")}
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-    <tr><td style="padding:18px 36px 6px 36px;">
-      {_sym_table_html(block_sym, n_quartile=max(1, len(block_sym) // 4))}
-    </td></tr>
-  </table>
-
-  <!-- SECTION v — SHORTS -->
-  <a name="shorts"></a>
-  {_section_hdr("v", "Short Selling, top by quantity",
-    f"positions ≥ {SHORT_MIN_QTY:,} shares",
-    "Intraday short positions of at least five thousand shares. Source feed carries no client information.")}
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-    <tr><td style="padding:18px 36px 6px 36px;">
-      {_short_table_html(short_filt)}
-    </td></tr>
-  </table>
-
-  <!-- SECTION vi — BULK BY CLIENT -->
-  <a name="clients"></a>
-  {_section_hdr("vi", "Bulk Deals, by client", "who was on the other side",
-    "One row per client–symbol pair, ordered by client total value descending.")}
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-    <tr><td style="padding:18px 36px 6px 36px;">
-      {_client_table_html(bulk_client)}
-    </td></tr>
-  </table>
-
-  <!-- SECTION vii — BLOCK BY CLIENT -->
-  {_section_hdr("vii", "Block Deals, by client",
-    f"{bkm['deals']} deal{'s' if bkm['deals'] != 1 else ''} · pre-open window")}
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-    <tr><td style="padding:18px 36px 6px 36px;">
-      {_client_table_html(block_client)}
-    </td></tr>
-  </table>
-
-  <!-- COLOPHON -->
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:32px;">
-    <tr><td style="padding:0 36px 32px 36px;">
-      <div style="border-top:3px solid {_INK}; padding-top:1px;"></div>
-      <div style="border-top:1px solid {_INK}; margin-top:2px;"></div>
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:18px;">
-        <tr>
-          <td valign="top" width="55%" style="padding-right:24px;">
-            <div style="font-family:'Times New Roman',Times,serif; font-size:9.5px; letter-spacing:0.24em; text-transform:uppercase; color:{_BURGUNDY}; font-weight:600; margin-bottom:6px;">Colophon</div>
-            <p style="font-family:'Times New Roman',Times,serif; font-size:12.5px; color:{_INK}; line-height:1.65; margin:0;">
-              Set in <span style="font-style:italic;">Times New Roman</span>. Compiled by the NSE Deals pipeline at {gen_time_str}{gen_day_str} of {gen_month}.
-            </p>
-          </td>
-          <td valign="top" width="45%">
-            <div style="font-family:'Times New Roman',Times,serif; font-size:9.5px; letter-spacing:0.24em; text-transform:uppercase; color:{_BURGUNDY}; font-weight:600; margin-bottom:6px;">Sources &amp; correspondence</div>
-            <div style="font-family:'Times New Roman',Times,serif; font-size:12.5px; color:{_INK}; line-height:1.7;">
-              Data from NSE archives &mdash; bulk, block, and short feeds. Notional values from the WATP column.<br>
-              Write to <a href="mailto:bac@brindco.com" style="color:{_BURGUNDY}; text-decoration:none; border-bottom:1px dotted {_TAN};">bac@brindco.com</a> with corrections or class additions.
-            </div>
-          </td>
-        </tr>
-      </table>
-      <div style="margin-top:18px; text-align:center; font-family:'Times New Roman',Times,serif; font-size:11px; font-style:italic; color:{_STONE};">
-        ◆&nbsp;&nbsp;&nbsp;◆&nbsp;&nbsp;&nbsp;◆
-      </div>
-    </td></tr>
-  </table>
-
-</td></tr>
-</table>
-</body>
-</html>"""
+    preheader = (
+        f"{_n(bm['deals'], 'bulk deal')}, {_n(bkm['deals'], 'block deal')}, "
+        f"{shm['deals']} short positions"
+    )
+    title = (
+        f"Daily Deals &mdash; NSE &mdash; {_house_date(report_date)} "
+        f"&mdash; {edition_label}"
+    )
+    return d.doc_open(title, preheader) + body + d.DOC_CLOSE
 
 
 # ─── Email ────────────────────────────────────────────────────────────────────
+
+def _build_message(
+    *, sender: str, sender_name: str, recipients: list[str],
+    subject: str, html: str, attachments: dict[str, bytes],
+) -> EmailMessage:
+    """Assembles the outgoing message.
+
+    Split out from _send_email so `--eml` can write the exact bytes that would
+    go over SMTP — a hand-rolled preview would not prove the real MIME
+    structure or attachment types.
+
+    Attachment MIME type is inferred from the extension: a PDF sent as text/csv
+    is rejected or mangled by most clients.
+
+    policy=SMTP_POLICY pins CRLF line endings. The default policy uses bare LF,
+    which smtplib silently corrects on send but which corrupts a message
+    serialised straight to a .eml file: quoted-printable soft line breaks become
+    "=\\n" instead of the RFC 2045 "=\\r\\n", and strict decoders (Outlook) then
+    fail to rejoin the wrapped lines and render the HTML as tag soup.
+    """
+    msg = EmailMessage(policy=SMTP_POLICY)
+    msg["Subject"] = subject
+    msg["From"] = f"{sender_name} <{sender}>"
+    msg["To"] = ", ".join(recipients)
+    # Real MTAs stamp these; set them so a .eml written to disk is a complete
+    # message rather than one Outlook shows with an empty date.
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain=sender.split("@")[-1] or "brindco.com")
+    msg.set_content("This report requires an HTML-capable email client.")
+    msg.add_alternative(html, subtype="html")
+    for filename, content in attachments.items():
+        if not content:
+            continue
+        if filename.lower().endswith(".pdf"):
+            maintype, subtype = "application", "pdf"
+        else:
+            maintype, subtype = "text", "csv"
+        msg.add_attachment(content, maintype=maintype, subtype=subtype, filename=filename)
+    return msg
+
 
 def _send_email(
     *, sender: str, password: str, sender_name: str,
     recipients: list[str], subject: str, html: str,
     attachments: dict[str, bytes],
 ) -> None:
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = f"{sender_name} <{sender}>"
-    msg["To"] = ", ".join(recipients)
-    msg.set_content("This report requires an HTML-capable email client.")
-    msg.add_alternative(html, subtype="html")
-    for filename, content in attachments.items():
-        if content:
-            msg.add_attachment(content, maintype="text", subtype="csv", filename=filename)
+    msg = _build_message(
+        sender=sender, sender_name=sender_name, recipients=recipients,
+        subject=subject, html=html, attachments=attachments,
+    )
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
         smtp.login(sender, password)
         smtp.send_message(msg)
@@ -1203,7 +1340,7 @@ def _build_slack_blocks(
 ) -> list[dict]:
     bm  = metrics["bulk"]
     bkm = metrics["block"]
-    sm  = metrics["short"]
+    shm = metrics["short"]   # not `sm` — that name is the security_master module
     blocks: list[dict] = []
 
     _months = ["", "January", "February", "March", "April", "May", "June",
@@ -1222,7 +1359,7 @@ def _build_slack_blocks(
     blocks.append({"type": "section", "fields": [
         {"type": "mrkdwn", "text": f"*Bulk Deals*\n{_fmt_cr_plain(bm['value_cr'])}  ·  {bm['deals']} deals  ·  {bm['names']} names"},
         {"type": "mrkdwn", "text": f"*Block Deals*\n{_fmt_cr_plain(bkm['value_cr'])}  ·  {bkm['deals']} deals  ·  {bkm['names']} names"},
-        {"type": "mrkdwn", "text": f"*Short Selling*\n{sm['deals']} positions  ·  {sm['above_threshold']} above 5,000 shares"},
+        {"type": "mrkdwn", "text": f"*Short Selling*\n{shm['deals']} positions  ·  {shm['above_threshold']} above 5,000 shares"},
     ]})
     blocks.append({"type": "divider"})
 
@@ -1336,7 +1473,11 @@ def _send_slack(webhook_url: str, blocks: list[dict], report_date: date) -> None
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
-def main(report_date_override: date | None = None, preview_path: str | None = None) -> int:
+def main(
+    report_date_override: date | None = None,
+    preview_path: str | None = None,
+    eml_path: str | None = None,
+) -> int:
     from dotenv import load_dotenv
     from utils.helpers import today_ist
 
@@ -1352,7 +1493,21 @@ def main(report_date_override: date | None = None, preview_path: str | None = No
     logger.info("Building report for %s (today IST = %s)", report_date, today)
 
     preview_mode = preview_path is not None
-    if not preview_mode:
+    eml_mode = eml_path is not None
+    dry_run = preview_mode or eml_mode
+
+    if eml_mode:
+        # Real addresses when configured so the .eml matches what would ship,
+        # but no password is needed — nothing is sent. Placeholders keep the
+        # flag usable on a machine that has no SMTP config at all.
+        smtp_user   = os.environ.get("SMTP_USER", "bac@brindco.com")
+        recipients  = [
+            r.strip()
+            for r in os.environ.get("REPORT_RECIPIENTS", "parv.bangar@brindco.com").split(",")
+            if r.strip()
+        ]
+        sender_name = os.environ.get("REPORT_SENDER_NAME", "BAC Daily Deals")
+    elif not dry_run:
         smtp_user     = _env("SMTP_USER")
         smtp_password = _env("SMTP_PASSWORD")
         recipients    = [r.strip() for r in _env("REPORT_RECIPIENTS").split(",") if r.strip()]
@@ -1373,50 +1528,130 @@ def main(report_date_override: date | None = None, preview_path: str | None = No
         block = _enrich_block(block_raw)
         short = _enrich_short(short_raw)
 
-        metrics      = _topline(bulk, block, short)
-        bulk_sym     = _sym_rows(bulk)
-        block_sym    = _sym_rows(block)
-        short_filt   = _short_rows(short)
-        bulk_client  = _client_rows(bulk)
-        block_client = _client_rows(block)
-        top          = _top_names(bulk, block, n=10)
-        hlights      = _highlights(bulk, block)
+        # ── Comprehensive edition — every deal, rendered to the attached PDF ──
+        # short_min_qty=0: the 5,000-share floor is a noise filter for a screen
+        # read, and it drops ~80% of reported short positions. The PDF is the
+        # record of the session, so it carries all of them.
+        full = _derive(bulk, block, short, short_min_qty=0)
+        n_full_names = len(_all_symbols(bulk, block, short))
 
-        html = _build_html(
-            report_date, bulk, block, short,
-            bulk_sym, block_sym, short_filt,
-            bulk_client, block_client,
-            top, metrics, hlights, generated_at,
+        html_full = _build_html(
+            report_date, full["bulk"], full["block"], full["short"],
+            full["bulk_sym"], full["block_sym"], full["short_filt"],
+            full["bulk_client"], full["block_client"],
+            full["top"], full["metrics"], full["highlights"], generated_at,
+            edition=EDITION_FULL,
+            short_min_qty=0,
         )
 
+        # ── Focused edition — the email body ─────────────────────────────────
+        scope = _focus_scope(bulk, block, short, n=FOCUS_TOP_N)
+        focus_syms = _focus_union(scope)
+        focus = _derive(
+            _filter_symbols(bulk,  scope["bulk"]),
+            _filter_symbols(block, scope["block"]),
+            _filter_symbols(short, scope["short"]),
+            # Market-cap ranking is already the filter; the share-count floor
+            # would hide most large-cap shorts on top of it.
+            short_min_qty=0,
+        )
+        html_focus = _build_html(
+            report_date, focus["bulk"], focus["block"], focus["short"],
+            focus["bulk_sym"], focus["block_sym"], focus["short_filt"],
+            focus["bulk_client"], focus["block_client"],
+            focus["top"], focus["metrics"], focus["highlights"], generated_at,
+            edition=EDITION_FOCUS,
+            focus_symbols=focus_syms,
+            full_metrics=full["metrics"],
+            n_full_names=n_full_names,
+            short_min_qty=0,
+            focus_basis=scope.get("_basis", "market_cap"),
+        )
+
+        pdf_bytes = render_pdf(html_full)
+
         if preview_mode:
-            with open(preview_path, "w", encoding="utf-8") as fh:
-                fh.write(html)
-            logger.info("Preview saved to %s", preview_path)
+            base = re.sub(r"\.html?$", "", preview_path, flags=re.I)
+            with open(f"{base}.html", "w", encoding="utf-8") as fh:
+                fh.write(html_focus)
+            with open(f"{base}_comprehensive.html", "w", encoding="utf-8") as fh:
+                fh.write(html_full)
+            logger.info("Preview saved: %s.html (email body) + %s_comprehensive.html", base, base)
+            if pdf_bytes:
+                with open(f"{base}_comprehensive.pdf", "wb") as fh:
+                    fh.write(pdf_bytes)
+                logger.info("Preview PDF saved: %s_comprehensive.pdf (%.0f KB)",
+                            base, len(pdf_bytes) / 1024)
             return 0
 
         attachments = {
+            f"BAC_Daily_Deals_NSE_{report_date}_comprehensive.pdf": pdf_bytes or b"",
             f"bulk_deals_{report_date}.csv":  _csv_bytes(bulk_raw),
             f"block_deals_{report_date}.csv": _csv_bytes(block_raw),
             f"short_deals_{report_date}.csv": _csv_bytes(short_raw),
         }
+        if not pdf_bytes:
+            logger.warning("Sending without the comprehensive PDF — rendering failed")
 
         pretty_date = report_date.strftime("%d %b %Y")
+
+        if eml_mode:
+            # Same builder the SMTP path uses, so this file is the message
+            # byte-for-byte rather than an approximation of it.
+            msg = _build_message(
+                sender=smtp_user, sender_name=sender_name, recipients=recipients,
+                subject=f"BAC Daily Deals — NSE — {pretty_date}",
+                html=html_focus, attachments=attachments,
+            )
+            out = eml_path if eml_path.lower().endswith(".eml") else f"{eml_path}.eml"
+            blob = msg.as_bytes()
+
+            # Guard the exact defect that made the first .eml unreadable in
+            # Outlook: a quoted-printable soft break must be "=\r\n". Bare LF
+            # leaves the decoder unable to rejoin wrapped lines, and the HTML
+            # arrives as tag soup with every text node swallowed.
+            bare_lf = blob.count(b"\n") - blob.count(b"\r\n")
+            bad_soft = len(re.findall(rb"=(?<!\r=)\n", blob))
+            if bare_lf or bad_soft:
+                raise RuntimeError(
+                    f"Refusing to write a malformed .eml: {bare_lf} bare LF and "
+                    f"{bad_soft} non-CRLF quoted-printable soft breaks. The "
+                    f"message policy must be email.policy.SMTP."
+                )
+
+            # Binary mode: text mode on Windows would rewrite the CRLFs we just
+            # verified into CRCRLF.
+            with open(out, "wb") as fh:
+                fh.write(blob)
+            logger.info(
+                "Wrote %s (%.0f KB, CRLF verified) — From: %s  To: %s  attachments: %s",
+                out, len(blob) / 1024, smtp_user, ", ".join(recipients),
+                ", ".join(n for n, c in attachments.items() if c) or "none",
+            )
+            return 0
+
         _send_email(
             sender=smtp_user, password=smtp_password, sender_name=sender_name,
             recipients=recipients,
             subject=f"BAC Daily Deals — NSE — {pretty_date}",
-            html=html, attachments=attachments,
+            html=html_focus, attachments=attachments,
         )
         _mark_sent(report_date)
-        logger.info("Sent report for %s to %s", report_date, recipients)
+        logger.info(
+            "Sent report for %s to %s (body: %d focus names; PDF: %s)",
+            report_date, recipients, len(focus_syms),
+            f"{len(pdf_bytes) / 1024:.0f} KB" if pdf_bytes else "unavailable",
+        )
 
         slack_webhook = os.environ.get("SLACK_WEBHOOK_URL", "")
         if slack_webhook:
             try:
+                # Slack stays on the comprehensive scope — it is a channel
+                # notification, not the curated morning read.
                 slack_blocks = _build_slack_blocks(
-                    report_date, bulk_sym, block_sym, short_filt,
-                    bulk_client, block_client, top, metrics, hlights,
+                    report_date, full["bulk_sym"], full["block_sym"],
+                    full["short_filt"], full["bulk_client"], full["block_client"],
+                    full["top"], full["metrics"], full["highlights"],
                 )
                 _send_slack(slack_webhook, slack_blocks, report_date)
                 logger.info("Slack notification sent for %s", report_date)
@@ -1427,7 +1662,7 @@ def main(report_date_override: date | None = None, preview_path: str | None = No
 
     except Exception as exc:  # noqa: BLE001
         logger.exception("Report generation failed")
-        if not preview_mode:
+        if not dry_run:
             _mark_failed(report_date, f"{type(exc).__name__}: {exc}")
         return 1
 
@@ -1437,7 +1672,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate BAC Daily Deals NSE report")
     parser.add_argument("--date", help="Override report date (YYYY-MM-DD)")
     parser.add_argument("--preview", metavar="PATH",
-                        help="Save HTML to file instead of emailing (no DB slot needed)")
+                        help="Write previews instead of emailing (no DB slot needed). "
+                             "Produces PATH.html (the email body), "
+                             "PATH_comprehensive.html and PATH_comprehensive.pdf")
+    parser.add_argument("--eml", metavar="PATH",
+                        help="Write the complete message as a .eml file instead of "
+                             "sending — body plus PDF and CSV attachments, exactly "
+                             "as it would go over SMTP. Open it in any mail client "
+                             "to verify. No password or DB slot needed.")
     args = parser.parse_args()
     override = date.fromisoformat(args.date) if args.date else None
-    sys.exit(main(override, preview_path=args.preview))
+    sys.exit(main(override, preview_path=args.preview, eml_path=args.eml))
