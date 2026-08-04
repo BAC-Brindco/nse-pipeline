@@ -8,3 +8,10 @@ __pycache__/
 venv/
 dist/
 *.egg-info/
+
+# Generated report artefacts. The report is reproducible from any trading date
+# via `--preview` / `--eml`, so the outputs are not worth versioning — and a
+# single .eml carrying the PDF and CSVs is ~500 KB.
+*.eml
+report_preview_*
+data/security_master.json.tmp
