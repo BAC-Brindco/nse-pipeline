@@ -44,6 +44,7 @@ from html import escape as _e
 
 import pandas as pd
 
+from reports import client_class as cc
 from reports import design as d
 from reports.pdf_render import render_pdf
 from utils import security_master as sm
@@ -128,72 +129,22 @@ def _vcr(qty, price) -> float:
 
 
 # ─── Client classification ────────────────────────────────────────────────────
+# Lives in reports/client_class.py, derived against all 1,280 distinct client
+# names in the deal history and pinned by tests/test_client_class.py. The rules
+# it replaced were keyword substrings with a greedy CORP fallback, which put
+# 3,937 of 7,975 client rows into CORP — including 104 broker names and every
+# quant desk that trades under a "SECURITIES" or "RESEARCH" title.
 
-_CLIENT_RULES: list[tuple[str, list[str]]] = [
-    ("FII",    ["FPI ", "FOREIGN PORTFOLIO", "EMERGING MARKET", "GQG",
-                "GOLDMAN SACHS", "JP MORGAN", "MORGAN STANLEY", "NOMURA",
-                "CITIBANK", "CITIGROUP", "DEUTSCHE BANK", "BARCLAYS",
-                "BLACKROCK", "VANGUARD", "FIDELITY", "TEMPLETON",
-                "ABERDEEN", "SCHRODERS", "SOCIETE GENERALE", "BNP PARIBAS",
-                "UBS PRINCIPAL", "HSBC BANK", "LAZARD", "MERRILL LYNCH",
-                "CRAFT EM", "CRAFT EMERGING", "SINGAPORE PTE",
-                "MAURITIUS COMPANY", "CAYMAN", "OFFSHORE FUND",
-                "ODI HOLDER", "PARTICIPATORY NOTE"]),
-    ("DII/MF", ["MUTUAL FUND", "NIPPON INDIA MF", "HDFC MUTUAL", "SBI MUTUAL",
-                "AXIS MUTUAL", "KOTAK MUTUAL", "ADITYA BIRLA MF",
-                "UTI MUTUAL", "DSP MUTUAL", "MIRAE ASSET MF",
-                "INSURANCE CO", "LIC OF INDIA", "BAJAJ ALLIANZ",
-                "NATIONAL PENSION", "MOTILAL MF", "TATA MUTUAL",
-                "INVESCO MF", "CANARA ROBECO"]),
-    ("AIF",    ["AIF ", " AIF", "ALTERNATIVE INVESTMENT", "REF IFSC",
-                "REAL ESTATE FUND", "CATEGORY I AIF", "CATEGORY II AIF",
-                "CATEGORY III AIF", "COMMERCIAL REF", "VENTURE FUND IFSC"]),
-    ("HFT",    ["GRAVITON RESEARCH", "JUMP TRADING", "MICROCURVES",
-                "OPTIVER", "VIRTU", "CITADEL", "TWO SIGMA", "JANE STREET",
-                "IMC FINANCIAL", "SUSQUEHANNA", "TOWER RESEARCH",
-                "XTX MARKETS", "HUDSON RIVER", "HRTI", "MILLENIUM MGMT",
-                "POINT72", "SQUAREPOINT", "QUBE RESEARCH", "ALPHAWAVE",
-                "DE SHAW", "RENAISSANCE TECH"]),
-    ("PROP",   ["SECURITIES RESEARCH", "FINSOL", "JUNOMONETA", "YUGA STOCKS",
-                "BHANA EQUITY", "NK SECURITIES", "PROP TRADING",
-                "TRADING STRATEGIES LLP", "TRADE TECH"]),
-    ("BRKR",   ["BROKING LTD", "BROKING PVT", " BROKER ", "ANGEL ONE",
-                "ZERODHA", "EDELWEISS SECURITIES", "SHAREKHAN",
-                "ANTIQUE STOCK", "PRABHUDAS LILLADHER", "NIRMAL BANG",
-                "MOTILAL OSWAL SEC", "AXIS SECURITIES", "ICICI SEC",
-                "HDFC SEC", "KOTAK SEC"]),
-    ("STRAT",  ["ESTATE OF LATE", "ESTATE OF MR", "JHUNJHUNWALA",
-                "PROMOTER GROUP", "STRATEGIC INVESTOR", "PROMOTER A/C"]),
-    ("TRUST",  ["FAMILY OFFICE", "FAMILY TRUST", "FOUNDATION",
-                "ENDOWMENT", "CHARITABLE TRUST"]),
-    ("CORP",   ["PRIVATE LIMITED", "PVT. LTD", "PVT LTD", "HITECH PRIVATE",
-                "INDUSTRIES LTD", "ENTERPRISES LTD", "CORPORATION LTD",
-                "TECHNOLOGIES LTD", "INFRA LIMITED", "PROJECTS LTD",
-                "HOLDINGS LTD", "VENTURES LTD"]),
-]
-
-# Client class is a taxonomy, not a judgement — none of these is "good" or
-# "bad", so the semantic trio is deliberately unused here. Navy marks the
-# institutional classes, faint grey the rest.
 _TAG_COLOR = {
-    "FII": _NAVY, "DII/MF": _NAVY, "AIF": _NAVY,
-    "HFT": _NAVY_SOFT, "PROP": _NAVY_SOFT, "STRAT": _NAVY_SOFT,
-    "BRKR": _STONE, "CORP": _STONE, "HNI": _STONE,
-    "TRUST": _STONE, "OTHER": _STONE,
+    cc.FII: _NAVY, cc.DII: _NAVY, cc.AIF: _NAVY,
+    cc.HFT: _NAVY_SOFT, cc.PROP: _NAVY_SOFT, cc.STRAT: _NAVY_SOFT,
+    cc.BRKR: _STONE, cc.CORP: _STONE, cc.HNI: _STONE, cc.TRUST: _STONE,
 }
 
 
 def _classify(name: str) -> str:
-    if not name:
-        return "OTHER"
-    up = name.upper()
-    for tag, keywords in _CLIENT_RULES:
-        if any(k in up for k in keywords):
-            return tag
-    corp_markers = ["LTD", "LIMITED", "LLP", "FUND", "BANK", "INSURANCE",
-                    "CAPITAL", "SECURITIES", "FINANCIAL", "BROKING",
-                    "INVESTMENT", "ASSET", "MGMT", "VENTURES", "FINSOL"]
-    return "CORP" if any(m in up for m in corp_markers) else "HNI"
+    return cc.classify(name)
+
 
 
 def _tag_html(tag: str) -> str:
@@ -542,17 +493,54 @@ def _client_rows(df: pd.DataFrame) -> pd.DataFrame:
     by_cs["qty"] = by_cs["buy_qty"] + by_cs["sell_qty"]
     by_cs["side"] = by_cs.apply(_side, axis=1)
     by_cs["class"] = by_cs["client_name"].apply(_classify)
+    by_cs["mcap_cr"] = by_cs["symbol"].apply(
+        lambda s: sm.market_cap_cr(str(s)) or 0.0
+    )
     by_cs["_ctot"] = by_cs.groupby("client_name")["vcr"].transform("sum")
     # Sort by client total desc, then value desc within client — but keep
     # client_name as a tiebreaker so two clients with identical totals (e.g. the
     # two custody legs of a symmetric basket cross) never interleave. The
-    # rowspan-merged Client column in _client_table_html requires each client's
-    # rows to be contiguous; without this tiebreaker the rows alternate and the
-    # table structure collapses.
+    # continuation-marker Client column in _client_table_html requires each
+    # client's rows to be contiguous; without this tiebreaker they alternate.
     by_cs = by_cs.sort_values(
         ["_ctot", "client_name", "vcr"], ascending=[False, True, False]
     ).drop(columns="_ctot")
     return by_cs.reset_index(drop=True)
+
+
+def _client_rows_by_class(
+    client: pd.DataFrame, top_n: int | None = None,
+) -> list[tuple[str, pd.DataFrame, int, float]]:
+    """Split client rows into class compartments, largest company first.
+
+    Returns [(class, rows, total_rows_in_class, total_vcr_in_class), ...] in
+    CLASS_ORDER, skipping classes with no activity. `top_n` truncates each
+    compartment; the untruncated count is still returned so the section can say
+    what it is not showing rather than implying the class had only ten trades.
+
+    Ranking is by the market capitalisation of the traded company, so the
+    compartment answers "what are the biggest names this class touched" — not
+    "what were its biggest tickets", which is what value-ranking would give.
+    Ties break on deal value so a class trading several mega caps still leads
+    with its largest ticket among them.
+    """
+    if client is None or client.empty:
+        return []
+
+    out: list[tuple[str, pd.DataFrame, int, float]] = []
+    for tag in cc.CLASS_ORDER:
+        rows = client[client["class"] == tag]
+        if rows.empty:
+            continue
+        n_total = len(rows)
+        vcr_total = float(rows["vcr"].sum())
+        ranked = rows.sort_values(
+            ["mcap_cr", "vcr"], ascending=[False, False]
+        ).reset_index(drop=True)
+        if top_n:
+            ranked = ranked.head(top_n)
+        out.append((tag, ranked, n_total, vcr_total))
+    return out
 
 
 # ─── Top names (combined bulk + block) for the SVG chart ─────────────────────
@@ -954,6 +942,101 @@ _CLASS_LEGEND = (
     "<b>TRUST</b> family office or trust."
 )
 
+_CLASS_CAVEAT = (
+    "Class is inferred from the client name, which is all the deal feed carries. "
+    "Named desks are pinned; the rest is pattern-matched. Broker and proprietary "
+    "desks are the least separable &mdash; nothing in &ldquo;X Securities Pvt "
+    "Ltd&rdquo; says which it is &mdash; so an unidentified securities firm is "
+    "counted as a broker rather than guessed into a prop desk."
+)
+
+
+def _class_compartments_html(
+    client: pd.DataFrame,
+    *,
+    top_n: int | None,
+    show_badge: bool,
+    source: str,
+) -> str:
+    """One table per client class, ranked by the market cap of the company traded."""
+    compartments = _client_rows_by_class(client, top_n=top_n)
+    if not compartments:
+        return d.datatable([], [], empty="No client data.")
+
+    blocks: list[str] = []
+    for tag, rows, n_total, vcr_total in compartments:
+        shown = len(rows)
+        # Say what is being withheld. "Top 10 of 47" is a different claim from
+        # "10", and only one of them is true when the class traded 47 times.
+        if top_n and n_total > shown:
+            standfirst = (
+                f"top {shown} of {n_total} trades by market cap "
+                f"&middot; {_fmt_cr(vcr_total)}&nbsp;cr across the class"
+            )
+        else:
+            standfirst = (
+                f"{n_total} trade{'' if n_total == 1 else 's'} "
+                f"&middot; {_fmt_cr(vcr_total)}&nbsp;cr"
+            )
+
+        table_rows = []
+        prev = None
+        for _, r in rows.iterrows():
+            cn = str(r["client_name"])
+            s = str(r["symbol"])
+            first = cn != prev
+            table_rows.append([
+                (f'<strong>{_e(cn)}</strong>' if first
+                 else f'<span style="color:{_STONE};">&#8942;</span>'),
+                f'{_e(s)}{_index_badge(s) if show_badge else ""}',
+                _fmt_mcap(s),
+                _side_html(str(r["side"])),
+                f'{int(r["qty"]):,}',
+                f'<strong>{_fmt_cr(float(r["vcr"]))}</strong>',
+            ])
+            prev = cn
+
+        blocks.append(
+            f'<table role="presentation" width="100%" cellpadding="0" '
+            f'cellspacing="0" border="0"><tr><td style="padding:0 0 26px 0;">'
+            + _class_heading(tag, standfirst)
+            + d.datatable(
+                ["Client", "Symbol", "Mkt cap", "Side", "Qty", "&#8377; cr"],
+                table_rows,
+                align=["l", "l", "r", "c", "r", "r"],
+                # Pinned so every compartment lines up with the ones above and
+                # below it; without this each class table sizes to its own
+                # longest client name and the stack reads as ragged.
+                widths=[196, 104, 82, 40, 84, 62],
+            )
+            + '</td></tr></table>'
+        )
+
+    return (
+        "".join(blocks)
+        + f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+          f'border="0"><tr><td style="{d.font(10.5, color=_STONE)}padding:4px 0 0 0;">'
+          f'{source}</td></tr>'
+          f'<tr><td style="{d.font(10, color=_INK_SOFT, italic=True, leading=16)}'
+          f'text-align:justify;padding:12px 0 0 0;">{_CLASS_CAVEAT}</td></tr></table>'
+    )
+
+
+def _class_heading(tag: str, standfirst: str) -> str:
+    """A class compartment header: navy chip, full name, then the standfirst."""
+    return (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        f'border="0"><tr>'
+        f'<td width="52" style="width:52px;vertical-align:middle;padding:0 8px 8px 0;">'
+        f'{_tag_html(tag)}</td>'
+        f'<td style="vertical-align:middle;padding:0 0 8px 0;">'
+        f'<span style="{d.font(11.5, color=_INK, weight="bold")}">'
+        f'{cc.CLASS_LABEL.get(tag, tag)}</span>'
+        f'<span style="{d.font(10.5, color=_STONE)}"> &middot; {standfirst}</span>'
+        f'</td>'
+        f'</tr></table>'
+    )
+
 
 # ─── Editorial blocks ────────────────────────────────────────────────────────
 
@@ -1053,6 +1136,8 @@ def _build_html(
     n_full_names: int = 0,
     short_min_qty: int = SHORT_MIN_QTY,
     focus_basis: str = "market_cap",
+    class_bulk_client: pd.DataFrame | None = None,
+    class_block_client: pd.DataFrame | None = None,
 ) -> str:
     bm, bkm, shm = metrics["bulk"], metrics["block"], metrics["short"]
     is_focus = edition == EDITION_FOCUS
@@ -1175,21 +1260,32 @@ def _build_html(
         )
     )
 
-    # ── vi · Bulk by client ──────────────────────────────────────────────────
+    # ── vi · Bulk by client, compartmentalised by class ──────────────────────
+    # These compartments rank over the WHOLE session, not the focus symbols.
+    # Each class picking its own ten largest companies is the point of the
+    # section; feeding it the already-narrowed focus set would rank ten names
+    # against the same ten names in every class. The comprehensive edition shows
+    # every trade in each class, so the PDF stays the full record.
+    class_top_n = FOCUS_TOP_N if is_focus else None
+    cbc = class_bulk_client if class_bulk_client is not None else bulk_client
+    cbk = class_block_client if class_block_client is not None else block_client
     body += d.row(
-        _section("VI", "Bulk deals, by client", "who was on the other side")
-        + _client_table_html(
-            bulk_client, show_badge=is_focus, source=src,
-            caption="One row per client&ndash;symbol pair, ordered by client total "
-                    "value descending. " + _CLASS_LEGEND,
+        _section("VI", "Bulk deals, by client class",
+                 "who was on the other side, compartmentalised"
+                 + (f" &middot; top {FOCUS_TOP_N} per class by market cap, "
+                    f"across the whole session" if is_focus else ""))
+        + _class_compartments_html(
+            cbc, top_n=class_top_n, show_badge=is_focus, source=src,
         )
     )
 
-    # ── vii · Block by client ────────────────────────────────────────────────
+    # ── vii · Block by client, compartmentalised by class ────────────────────
     body += d.row(
-        _section("VII", "Block deals, by client",
+        _section("VII", "Block deals, by client class",
                  f"{_n(bkm['deals'], 'deal')} &middot; pre-open window")
-        + _client_table_html(block_client, show_badge=is_focus, source=src)
+        + _class_compartments_html(
+            cbk, top_n=class_top_n, show_badge=is_focus, source=src,
+        )
     )
 
     # ── Attachment note ──────────────────────────────────────────────────────
@@ -1566,6 +1662,9 @@ def main(
             n_full_names=n_full_names,
             short_min_qty=0,
             focus_basis=scope.get("_basis", "market_cap"),
+            # Class compartments rank over the full session, not the focus set.
+            class_bulk_client=full["bulk_client"],
+            class_block_client=full["block_client"],
         )
 
         pdf_bytes = render_pdf(html_full)

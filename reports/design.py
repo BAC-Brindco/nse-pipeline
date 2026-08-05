@@ -291,6 +291,7 @@ def datatable(
     rows: list[list[str]],
     *,
     align: list[str] | None = None,
+    widths: list[int] | None = None,
     title: str = "",
     source: str = "",
     caption: str = "",
@@ -301,6 +302,10 @@ def datatable(
     `align` takes one of l/c/r per column; c and r both centre, matching the
     reference implementation's numeric_align. Cell content is inserted as-is so
     callers can pass badges — callers escape their own text.
+
+    `widths` pins column widths in px on the header cells. Pass it when several
+    tables are stacked and must line up with each other: without it each table
+    sizes to its own content and a column of stacked tables reads as ragged.
     """
     if len(columns) > MAX_COLUMNS:
         raise ValueError(
@@ -319,8 +324,19 @@ def datatable(
             return "center"
         return "left"
 
+    def _w(i: int) -> str:
+        if not widths or i >= len(widths) or not widths[i]:
+            return ""
+        return f'width="{widths[i]}" '
+
+    def _wcss(i: int) -> str:
+        if not widths or i >= len(widths) or not widths[i]:
+            return ""
+        return f"width:{widths[i]}px;"
+
     ths = "".join(
-        f'<th style="{font(9.5, color=NAVY, weight="bold", ls=0.8, upper=True)}'
+        f'<th {_w(i)}style="{_wcss(i)}'
+        f'{font(9.5, color=NAVY, weight="bold", ls=0.8, upper=True)}'
         f'background-color:{BAND};border-top:2px solid {NAVY};'
         f'border-bottom:1px solid {RULE_STRONG};padding:7px 6px;'
         f'text-align:{_al(i)};">{c}</th>'
