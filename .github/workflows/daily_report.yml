@@ -39,9 +39,14 @@ jobs:
 
       # Chromium renders the comprehensive edition to the attached PDF.
       # --with-deps pulls the shared libraries headless Chromium needs on the
-      # runner image. If this step is removed the email still sends, just
-      # without the PDF (render_pdf degrades rather than raising).
+      # runner image.
+      #
+      # continue-on-error, because render_pdf already degrades to None and sends
+      # the email without the attachment. Letting a failed browser download abort
+      # the job would turn a missing attachment into a missing report, which is
+      # the opposite of the intended trade-off.
       - name: Install Chromium for PDF rendering
+        continue-on-error: true
         run: playwright install --with-deps chromium
 
       # Last-minute scrape immediately before the report — upserts are idempotent.
