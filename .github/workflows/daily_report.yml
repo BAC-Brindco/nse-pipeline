@@ -50,7 +50,15 @@ jobs:
         run: playwright install --with-deps chromium
 
       # Last-minute scrape immediately before the report — upserts are idempotent.
+      #
+      # continue-on-error, because the report must go out even on a partial
+      # scrape: a stale-but-labelled read beats no read at all. main.py now
+      # exits non-zero when a dataset fails, so this step still shows red, and
+      # the report's own _scrape_health() check labels the affected section as
+      # unavailable rather than letting it render as zero. The job as a whole
+      # goes red via the report step's exit code.
       - name: Refresh bulk / block / short deals (pre-report scrape)
+        continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}

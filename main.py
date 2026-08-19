@@ -66,6 +66,21 @@ def run(datasets: list[str] | None = None):
     return results
 
 
+def _exit_code(results: dict) -> int:
+    """1 if any dataset failed.
+
+    run() deliberately swallows per-dataset exceptions so one bad feed cannot
+    stop the others, but the process then exited 0 regardless -- so a scrape
+    that upserted nothing still showed a green step in CI. That is how two
+    days of deals were lost silently. Failures now surface in the exit code.
+    """
+    failed = [n for n, r in results.items() if isinstance(r, dict) and "error" in r]
+    if failed:
+        logger.error("Failed datasets: %s", ", ".join(failed))
+        return 1
+    return 0
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(description="NSE daily data scraper")
     parser.add_argument(
@@ -78,4 +93,4 @@ def _parse_args():
 
 if __name__ == "__main__":
     args = _parse_args()
-    run(args.datasets)
+    sys.exit(_exit_code(run(args.datasets)))

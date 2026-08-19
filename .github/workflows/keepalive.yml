@@ -1,0 +1,39 @@
+name: Keepalive — prevent schedule auto-disable
+
+# GitHub disables every scheduled workflow in a repository after 60 days with
+# no commit activity, and gives almost no warning: the YAML is untouched and
+# the Actions tab looks healthy, so the only tell is `state:
+# disabled_inactivity` on the API. daily_scrape.yml in this repo is already
+# sitting in that state.
+#
+# workflow_dispatch does NOT reset the clock -- only commits do -- so the
+# cron-job.org trigger in daily_report.yml is not protection either.
+# Re-enabling also has to be explicit: a later commit resets the timer but
+# does not switch a disabled workflow back on.
+#
+# Monthly, so this also keeps itself alive with ~2x margin.
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"   # 06:00 UTC on the 1st of each month
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    name: "Reset the 60-day inactivity clock"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Push an empty commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "chore: keepalive — reset Actions inactivity clock"
+          git push

@@ -285,6 +285,66 @@ def _filter_symbols(df: pd.DataFrame, symbols: list[str]) -> pd.DataFrame:
     return df[df["symbol"].astype(str).isin(set(symbols))].copy()
 
 
+# ─── Data-integrity guard ─────────────────────────────────────────────────────
+
+_DEAL_DATASETS = ("bulk_deals", "block_deals", "short_deals")
+
+
+def _scrape_health(report_date: date) -> list[str]:
+    """Datasets that are empty *because the scrape failed*, not because the
+    session was quiet.
+
+    An empty section is ambiguous -- "no deals were reported" and "we could not
+    fetch the deals" render identically -- and only the scrape log can tell them
+    apart. Conflating them is exactly how 2026-08-17's 100 bulk deals and
+    2026-08-18's bulk + block deals were mailed out as "none", twice, to the
+    full distribution list, with every run reporting success.
+
+    A dataset is degraded when it has no rows for report_date AND its most
+    recent scrape did not succeed. Rows present, or a clean scrape that simply
+    found nothing, are both fine.
+
+    Never raises: a broken guard must not be able to stop the report.
+    """
+    from database.client import get_client
+    degraded: list[str] = []
+    try:
+        client = get_client()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Scrape-health check unavailable: %s", exc)
+        return degraded
+
+    for ds in _DEAL_DATASETS:
+        try:
+            got = client.table(ds).select("id", count="exact").eq(
+                "deal_date", report_date.isoformat()).limit(1).execute()
+            if (got.count or 0) > 0:
+                continue
+            last = client.table("scrape_run_log").select("status").eq(
+                "dataset", ds).order("start_time", desc=True).limit(1).execute()
+            status = last.data[0]["status"] if last.data else None
+            if status != "success":
+                degraded.append(ds)
+                logger.error(
+                    "%s: no rows for %s and last scrape status=%s", ds, report_date, status
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Scrape-health check failed for %s: %s", ds, exc)
+    return degraded
+
+
+def _degraded_card(degraded: list[str]) -> dict:
+    names = ", ".join(d.replace("_", " ") for d in degraded)
+    return {
+        "title": "Data incomplete &mdash; do not read empty sections as zero",
+        "body": (
+            f"The {names} feed could not be collected for this session, so the "
+            f"section below is blank because the data is missing, not because "
+            f"there were no deals. Treat it as unavailable pending a re-run."
+        ),
+    }
+
+
 # ─── Idempotency ──────────────────────────────────────────────────────────────
 
 def _claim_slot(report_date: date, recipients: list[str]) -> bool:
@@ -1620,6 +1680,16 @@ def main(
         short_raw = _fetch("short_deals", report_date)
         logger.info("Fetched: %d bulk, %d block, %d short", len(bulk_raw), len(block_raw), len(short_raw))
 
+        # Distinguish "quiet session" from "collection failed" before anything
+        # is rendered, so a blank section can be labelled rather than implied.
+        degraded = _scrape_health(report_date)
+        if degraded:
+            logger.error(
+                "DATA INCOMPLETE for %s: %s. Sending anyway, flagged in the "
+                "subject and body; the job will exit non-zero so the run goes red.",
+                report_date, ", ".join(degraded),
+            )
+
         bulk  = _enrich_bulk(bulk_raw)
         block = _enrich_block(block_raw)
         short = _enrich_short(short_raw)
@@ -1630,6 +1700,8 @@ def main(
         # record of the session, so it carries all of them.
         full = _derive(bulk, block, short, short_min_qty=0)
         n_full_names = len(_all_symbols(bulk, block, short))
+        if degraded:
+            full["highlights"] = [_degraded_card(degraded)] + full["highlights"]
 
         html_full = _build_html(
             report_date, full["bulk"], full["block"], full["short"],
@@ -1651,6 +1723,8 @@ def main(
             # would hide most large-cap shorts on top of it.
             short_min_qty=0,
         )
+        if degraded:
+            focus["highlights"] = [_degraded_card(degraded)] + focus["highlights"]
         html_focus = _build_html(
             report_date, focus["bulk"], focus["block"], focus["short"],
             focus["bulk_sym"], focus["block_sym"], focus["short_filt"],
@@ -1693,13 +1767,18 @@ def main(
             logger.warning("Sending without the comprehensive PDF — rendering failed")
 
         pretty_date = report_date.strftime("%d %b %Y")
+        # The subject is the only part guaranteed to be seen, so the warning
+        # goes there too -- a body banner is missable on a phone preview.
+        subject = f"BAC Daily Deals — NSE — {pretty_date}"
+        if degraded:
+            subject = f"[DATA INCOMPLETE] {subject}"
 
         if eml_mode:
             # Same builder the SMTP path uses, so this file is the message
             # byte-for-byte rather than an approximation of it.
             msg = _build_message(
                 sender=smtp_user, sender_name=sender_name, recipients=recipients,
-                subject=f"BAC Daily Deals — NSE — {pretty_date}",
+                subject=subject,
                 html=html_focus, attachments=attachments,
             )
             out = eml_path if eml_path.lower().endswith(".eml") else f"{eml_path}.eml"
@@ -1732,7 +1811,7 @@ def main(
         _send_email(
             sender=smtp_user, password=smtp_password, sender_name=sender_name,
             recipients=recipients,
-            subject=f"BAC Daily Deals — NSE — {pretty_date}",
+            subject=subject,
             html=html_focus, attachments=attachments,
         )
         _mark_sent(report_date)
@@ -1757,7 +1836,10 @@ def main(
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Slack send failed (non-fatal): %s", exc)
 
-        return 0
+        # The report has gone out either way -- a partial read beats no read --
+        # but a degraded run must not look green, or the next gap goes unnoticed
+        # exactly like the last two did.
+        return 1 if degraded else 0
 
     except Exception as exc:  # noqa: BLE001
         logger.exception("Report generation failed")
