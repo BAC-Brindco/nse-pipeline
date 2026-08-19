@@ -33,7 +33,9 @@ logger = logging.getLogger(__name__)
 
 _SNAPSHOT_URL  = "https://www.nseindia.com/api/snapshot-capital-market-largedeal"
 _TABLE         = "bulk_deals"
-_CONFLICT_COLS = ["deal_date", "symbol", "client_name", "buy_sell", "quantity"]
+# Includes avg_price: NSE legitimately reports two deals identical on every
+# other key column but differing in price (see bulk_unique migration).
+_CONFLICT_COLS = ["deal_date", "symbol", "client_name", "buy_sell", "quantity", "avg_price"]
 
 
 def _parse_api_row(row: dict, scrape_date: str, source_url: str) -> dict:

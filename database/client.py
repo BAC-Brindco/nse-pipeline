@@ -80,7 +80,39 @@ def upsert(table: str, records: list[dict], conflict_columns: list[str] | None =
     return inserted
 
 
+def _dedupe_on_conflict(records: list[dict], conflict_columns: list[str]) -> list[dict]:
+    """Collapse rows sharing a conflict key, keeping the last occurrence.
+
+    Postgres refuses an ON CONFLICT DO UPDATE that touches the same row
+    twice (SQLSTATE 21000), and it fails the *entire* command -- so one
+    duplicate pair silently voids a whole day's batch. That is exactly how
+    2026-08-17's 100 bulk deals were lost, and 2026-05-08's block deals
+    before them.
+
+    This is a last-resort guard, not the primary defence: the conflict key
+    should be wide enough that genuinely distinct trades do not collide
+    (see the price columns in bulk_unique / block_unique). Anything landing
+    here is either a true duplicate or a key that is still too narrow, so
+    warn loudly rather than dropping rows quietly.
+    """
+    if not conflict_columns:
+        return records
+    deduped: dict[tuple, dict] = {}
+    for r in records:
+        deduped[tuple(r.get(c) for c in conflict_columns)] = r
+    dropped = len(records) - len(deduped)
+    if dropped:
+        logger.warning(
+            "Dropped %d row(s) colliding on %s before upsert -- verify the "
+            "conflict key is wide enough for this source",
+            dropped, ",".join(conflict_columns),
+        )
+    return list(deduped.values())
+
+
 def bulk_upsert(table: str, records: list[dict], conflict_columns: list[str] | None = None, batch_size: int = 500) -> int:
+    if conflict_columns:
+        records = _dedupe_on_conflict(records, conflict_columns)
     total = 0
     for i in range(0, len(records), batch_size):
         batch = records[i : i + batch_size]

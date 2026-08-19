@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS bulk_deals (
     remarks             TEXT,
     scrape_date         DATE         NOT NULL DEFAULT CURRENT_DATE,
     created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    CONSTRAINT bulk_unique UNIQUE (deal_date, symbol, client_name, buy_sell, quantity)
+    CONSTRAINT bulk_unique UNIQUE NULLS NOT DISTINCT (deal_date, symbol, client_name, buy_sell, quantity, avg_price)
 );
 
 CREATE INDEX IF NOT EXISTS idx_bulk_date      ON bulk_deals (deal_date);
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS block_deals (
     exchange            VARCHAR(10)  NOT NULL DEFAULT 'NSE',
     scrape_date         DATE         NOT NULL DEFAULT CURRENT_DATE,
     created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    CONSTRAINT block_unique UNIQUE (deal_date, symbol, client_name, buy_sell, quantity)
+    CONSTRAINT block_unique UNIQUE NULLS NOT DISTINCT (deal_date, symbol, client_name, buy_sell, quantity, trade_price)
 );
 
 CREATE INDEX IF NOT EXISTS idx_block_date      ON block_deals (deal_date);

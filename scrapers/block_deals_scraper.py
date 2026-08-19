@@ -32,7 +32,9 @@ logger = logging.getLogger(__name__)
 
 _SNAPSHOT_URL  = "https://www.nseindia.com/api/snapshot-capital-market-largedeal"
 _TABLE         = "block_deals"
-_CONFLICT_COLS = ["deal_date", "symbol", "client_name", "buy_sell", "quantity"]
+# Includes trade_price for the same reason as bulk_deals -- this table hit
+# the identical duplicate-key abort on 2026-05-08.
+_CONFLICT_COLS = ["deal_date", "symbol", "client_name", "buy_sell", "quantity", "trade_price"]
 
 
 def _parse_api_row(row: dict, scrape_date: str, source_url: str) -> dict:
