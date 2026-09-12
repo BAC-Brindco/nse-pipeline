@@ -257,6 +257,15 @@ _RULES: list[tuple[str, re.Pattern]] = [
         r" REAL ESTATE FUND", r" COMMERCIAL REF ", r" REF IFSC ",
         r" CROSSOVER OPPORTUNITIES FUND", r" TRUE NORTH FUND",
         r" PI OPPORTUNITIES",
+        # Fund-series shapes the SCHEME/SERIES patterns above miss because the
+        # numeral trails the name directly ("MADISON INDIA OPPORTUNITIES IV").
+        r" OPPORTUNITIES [IVX]+ ",
+        # Domestic PMS and AIF strategy vehicles ("BUOYANT OPPORTUNITIES
+        # STRATEGY-III", "KOTAK PERFORMING RE CREDIT STRATEGY FUND-I").
+        # Deliberately NOT a bare " STRATEGY ": that also matches
+        # "AL MAHA INVESTMENT FUND PCC - ONYX STRATEGY", an offshore PCC that
+        # this rule would then steal from the FII rule below.
+        r" OPPORTUNITIES STRATEGY", r" STRATEGY FUND",
     )),
 
     # ---- Foreign portfolio investors.
@@ -271,6 +280,19 @@ _RULES: list[tuple[str, re.Pattern]] = [
         r" NETHERLANDS", r" SINGAPORE ", r" PTE ", r" PTY ", r" PCC ",
         r" SICAV", r" ICAV", r" PLC ", r" LLC ", r" INC ", r" NV ", r" SE ",
         r" OFFSHORE",
+        # Singapore variable capital companies. Only funds use the VCC form, so
+        # unlike the corporate suffixes below this is evidence of a portfolio
+        # investor rather than of a foreign operating company. No leading space:
+        # the feed carries it welded ("NRSGVCC") as well as spaced.
+        r"VCC ", r"VCC$", r"VCC-",
+        # German-language fund vehicles. The GmbH itself is a corporate form and
+        # is handled as one further down; FONDS is what says the money is a fund
+        # ("METZLER ASSET MANAGEMENT GMBH FOR MI-FONDS 415").
+        r" FONDS",
+        # Foreign university endowments investing through the FPI route.
+        # ENDOWMENT deliberately stays with TRUST: a domestic endowment is not
+        # an FPI, and only the university form is reliably offshore here.
+        r" UNIVERSITY ", r" UNIV OF ",
         # Fund shapes that only foreign vehicles use.
         r" EMERGING MARKET", r" MASTER FUND", r" MOTHER FUND", r" ETF ",
         r" CIT ", r" UNIT TRUST", r" INVESTMENT TRUST ", r" COMMINGLED",
@@ -352,6 +374,30 @@ _CORP_SUFFIX = _rx(
     r"DISTRIBUTORS|MARKETING|CAPITAL|FINANCE|FINSERV|BANK|FUND|TRUST) "
 )
 
+# Non-English corporate forms. These are the reason a German chemicals group and
+# a Dutch holding vehicle were being counted as private individuals: the suffix
+# list above is entirely Anglophone, so "BAYER AG" and "CREDITACCESS INDIA B.V."
+# matched nothing and fell through to HNI — the one bucket that asserts the
+# holder is a named person.
+#
+# CORP, not FII, on purpose. Every name these patterns catch in the deal history
+# is an operating or holding company (Bayer, Tencent Cloud Europe, FILA,
+# CreditAccess India, Resilient Asset Management — the renamed Antfin vehicle
+# that held Paytm), and CORP's remit is exactly "operating companies, holding
+# companies and treasuries". Calling them foreign portfolio investors would swap
+# one wrong answer for a subtler one. The genuinely fund-shaped foreign vehicles
+# are claimed earlier by the FII rule's VCC and FONDS patterns.
+#
+# Consulted only after every rule above has failed, so this can move a name out
+# of HNI but can never override a classification a rule already made.
+_FOREIGN_CORP_FORM = _rx(
+    r" AG ", r" AKTIENGESELLSCHAFT ",      # German / Swiss / Austrian
+    r" GMBH ",                             # German limited company
+    r" B V ", r" BV ", r" N V ",           # Dutch (feed writes "B.V." -> " B V ")
+    r" SPA ", r" S P A ",                  # Italian
+    r" SARL ", r" SAS ",                   # French
+)
+
 
 def classify(name: str) -> str:
     """The client class for a raw feed name. Never raises; never returns None."""
@@ -367,7 +413,9 @@ def classify(name: str) -> str:
         if rx.search(n):
             return tag
 
-    return CORP if _CORP_SUFFIX.search(n) else HNI
+    if _CORP_SUFFIX.search(n) or _FOREIGN_CORP_FORM.search(n):
+        return CORP
+    return HNI
 
 
 def confidence(name: str) -> str:
@@ -376,10 +424,18 @@ def confidence(name: str) -> str:
     The report surfaces this nowhere, but it is what makes a misclassification
     debuggable: a wrong 'pinned' is a bad entry in _KNOWN, a wrong 'pattern' is
     a bad rule, and a wrong 'fallback' means the name carries no signal at all.
+
+    A suffix match counts as 'pattern', not 'fallback'. The distinction is the
+    whole value of this function: querying for fallback-classified names is how
+    "BAYER AG" and "CREDITACCESS INDIA B.V." were found sitting in HNI, and that
+    query only works if 'fallback' really does mean no signal. A corporate
+    suffix is signal.
     """
     n = normalise(name)
     if any(k in n for k in (k for k, _ in _KNOWN)):
         return "pinned"
     if any(rx.search(n) for _, rx in _RULES):
+        return "pattern"
+    if _CORP_SUFFIX.search(n) or _FOREIGN_CORP_FORM.search(n):
         return "pattern"
     return "fallback"

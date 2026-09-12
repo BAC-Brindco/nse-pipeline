@@ -175,3 +175,141 @@ def test_confidence_reports_how_the_call_was_made():
     assert confidence("HRTI PRIVATE LIMITED") == "pinned"
     assert confidence("SOME RANDOM BROKING LLP") == "pattern"
     assert confidence("VISHAL MAHESH WAGHELA") == "fallback"
+
+
+# ── Non-English corporate forms ──────────────────────────────────────────────
+# REGRESSION: every name in this block was classified HNI — "Individuals and
+# HUFs" — because the corporate-suffix list was entirely Anglophone. It was
+# found by the weekly report, where these aggregate into a class net-flow
+# headline: on the week of 17-21 Aug 2026, RESILIENT ASSET MANAGEMENT B V alone
+# was 101% of the reported HNI net, so the report stated that individuals sold
+# ₹5,819 cr net when the number was one Dutch holding vehicle.
+
+@pytest.mark.parametrize("name", [
+    "RESILIENT ASSET MANAGEMENT B V",       # the Antfin vehicle that held Paytm
+    "CREDITACCESS INDIA B.V.",              # feed writes B.V.; normalise -> " B V "
+    "TENCENT CLOUD EUROPE B.V.",
+    "BAYER AG",
+    "BAYER CROPSCIENCE AKTIENGESELLSCHAFT",
+    "FILA - FABBRICA ITALIANA LAPIS ED AFFINI SPA",
+])
+def test_foreign_corporate_forms_are_not_individuals(name):
+    assert classify(name) == CORP
+
+
+def test_foreign_corporate_form_is_corp_not_fii():
+    """The bucket choice, pinned deliberately.
+
+    These are operating and holding companies, so CORP ("operating companies,
+    holding companies and treasuries") is accurate and FII ("foreign portfolio
+    investors") is not. Routing every foreign suffix to FII would swap one wrong
+    answer for a subtler one that is harder to notice.
+    """
+    assert classify("BAYER AG") == CORP
+    assert classify("TENCENT CLOUD EUROPE B.V.") == CORP
+
+
+def test_a_suffix_match_is_a_pattern_call_not_a_fallback():
+    """The query that found the bug has to keep working.
+
+    'fallback' must mean the name carries no signal, because querying for
+    fallback-classified names is how these were found. A corporate suffix is
+    signal; a bare personal name is not.
+    """
+    assert confidence("BAYER AG") == "pattern"
+    assert confidence("RESILIENT ASSET MANAGEMENT B V") == "pattern"
+    assert confidence("VISHAL MAHESH WAGHELA") == "fallback"
+
+
+# ── Foreign fund vehicles ────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("name", [
+    "NORTH ROCK SG VCC",
+    "NRSGVCC",                              # ORDER: welded, no word boundary
+    "NECTA BLOOM VCC - NECTA BLOOM ONE",
+    "ACM GLOBAL FUND VCC",
+    "GSS OPPORTUNITIES INVESTMENT I VCC",
+    "CULLINAN OPPRTS FUND VCC-CULLINAN OPPORTUNITIES INCORPORATED VCC SUB FUND 1",
+])
+def test_singapore_vcc_is_a_foreign_fund(name):
+    """Only funds use the VCC form, so unlike a corporate suffix it is evidence
+    of a portfolio investor. Several of these previously read as CORP."""
+    assert classify(name) == FII
+
+
+def test_vcc_beats_the_quant_pattern():
+    """ORDER: the FII rule must be tested before the HFT one.
+
+    "VISTA AXIS VCC-QUANT FUND" is a Singapore fund, not a quant prop desk, but
+    the HFT rule matches a bare "QUANT" anywhere in the name.
+    """
+    assert classify("VISTA AXIS VCC-QUANT FUND") == FII
+
+
+@pytest.mark.parametrize("name", [
+    "ALLIANZ GLOBAL INVESTORS GMBH ACTING ON BEHALF OF ALLIANZ EEE FONDS",
+    "METZLER ASSET MANAGEMENT GMBH FOR MI-FONDS 415",
+    "BAYERNINVEST KVG MBH ON BEHALF OF ERI BAYERNINVEST FONDS AKTIEN ASIEN",
+    "APT-UNIVERSAL-FONDS",
+])
+def test_german_fonds_is_a_foreign_fund(name):
+    """FONDS, not GMBH, is what says the money is a fund.
+
+    The GmbH is only the manager's corporate form — "ALLIANZ GLOBAL INVESTORS
+    GMBH" is the vehicle through which the fund trades, and the fund is what is
+    being classified.
+    """
+    assert classify(name) == FII
+
+
+def test_university_endowment_is_a_foreign_investor():
+    assert classify("UNIVERSITY OF NOTRE DAME DU LAC") == FII
+
+
+def test_endowment_alone_stays_with_trust():
+    """ORDER: UNIVERSITY went to FII; ENDOWMENT deliberately did not.
+
+    A domestic endowment is not an FPI, and only the university form is
+    reliably offshore in this feed.
+    """
+    assert classify("SOME CHARITABLE ENDOWMENT") == TRUST
+
+
+# ── Fund-series shapes ───────────────────────────────────────────────────────
+
+def test_trailing_roman_numeral_fund_series_is_an_aif():
+    """The SCHEME/SERIES patterns miss a numeral that trails the name directly."""
+    assert classify("MADISON INDIA OPPORTUNITIES IV") == AIF
+
+
+@pytest.mark.parametrize("name", [
+    "BUOYANT OPPORTUNITIES STRATEGY",
+    "BUOYANT OPPORTUNITIES STRATEGY - II",
+    "BUOYANT OPPORTUNITIES STRATEGY-III",
+    "KOTAK PERFORMING RE CREDIT STRATEGY FUND-I",
+])
+def test_pms_strategy_vehicles_are_aifs(name):
+    assert classify(name) == AIF
+
+
+def test_strategy_rule_does_not_steal_offshore_pcc_funds():
+    """ORDER + REGRESSION: why the rule is not a bare " STRATEGY ".
+
+    The AIF rule runs before the FII rule, so a bare " STRATEGY " would move
+    this Gulf PCC fund from FII to AIF. It is narrowed to " OPPORTUNITIES
+    STRATEGY" and " STRATEGY FUND" precisely to leave this one alone.
+    """
+    assert classify("AL MAHA INVESTMENT FUND PCC - ONYX STRATEGY") == FII
+
+
+def test_named_individuals_are_still_individuals():
+    """The counterweight: none of the above may start eating real people.
+
+    All five are genuine individual holders from the deal history, and HNI is
+    the correct answer for each.
+    """
+    for name in (
+        "SURENDERPAL SINGH SALUJA", "ARUNA GANESH", "JAYANTI SINHA",
+        "VISHAL MAHESH WAGHELA", "ADITYA KUMAR HALWASIYA",
+    ):
+        assert classify(name) == HNI, name

@@ -189,3 +189,114 @@ python historical_backfill.py --no-resume
 python main.py
 python main.py --datasets holidays asm gsm pit
 ```
+
+## 8. Reports
+
+Two emailed reports read the same fact tables. Both ship a market-cap-focused
+HTML body plus a comprehensive PDF and raw CSVs, both render through
+`reports/design.py` so the house style is shared rather than copied, and both
+claim a `report_log` slot before sending so duplicate cron triggers cannot
+produce duplicate mail.
+
+| | Daily | Weekly |
+|---|---|---|
+| Module | `reports/daily_deals_report.py` | `reports/weekly_deals_report.py` |
+| Workflow | `.github/workflows/daily_report.yml` | `.github/workflows/weekly_report.yml` |
+| Schedule | Tue–Sat 10:00 IST | Sat 10:00 IST |
+| Covers | the previous trading day | the Mon–Fri week just finished |
+| `report_log.report_type` | `daily_deals_email` | `weekly_deals_email` |
+| Slot key | that trading day | the week's **last** trading day |
+
+The weekly is not five dailies concatenated. Ten of its twelve sections reach
+the email body; **XI and XII are inline SVG and therefore PDF-only**, because
+Outlook's Word engine renders no SVG at all and would leave a section heading
+over blank space. Every chart in the body is built from nested `<td bgcolor>`
+cells for the same reason — Word ignores `width` on a div, and Outlook blocks
+images until the reader opts in. `_build_html` gates the SVG pair on
+`not is_focus`; that gate is a statement about the medium, not a preference.
+
+Five of its sections answer questions a single session cannot:
+
+- **Concentration (II)** — the week's names by rupee value with a running
+  share beside each, so a heavy week and a week carrying three heavy prints
+  stop looking identical. The max-of-sides rule is applied per feed per
+  session, matching `_daily_trend`'s decomposition exactly, so this section
+  sums to the same week total the session chart above it prints. Taking the max
+  over the whole week instead is the obvious shortcut and is wrong by ~30 cr on
+  17–21 Aug 2026 — pinned by a test, because a different total under two
+  adjacent sections costs the reader both numbers.
+- **Cumulative foreign against domestic (IV)** — the running net per session
+  for FII and DII/MF on one shared scale, above the per-session grid. The grid
+  says who was on which side each day; it cannot say whether five bars were one
+  exit or a build, because nobody sums bars in their head. A class with no deal
+  on a session carries its previous total forward rather than resetting: a day
+  without a trade is a day the position did not change. Final values reconcile
+  exactly against the week-net table beneath — asserted.
+- **Persistent flows** — client-symbol pairs traded on more than one session,
+  net of what cancelled out. A `conviction` floor (`PERSIST_MIN_CONVICTION`,
+  default 0.25) separates a position being built from an HFT round trip, and
+  the excluded round-trip count is stated rather than silently dropped.
+- **Net flows by client class** — a class × session grid of diverging bars over
+  the week-total table. The table alone cannot distinguish one Wednesday block
+  from four days of steady selling, and those are different events: on
+  17–21 Aug 2026 the FII week-net of −₹5,476 cr was actually a ₹1,482 cr *buy*
+  on Tuesday followed by three days of selling, while DII/MF bought every
+  session. Bars diverge from a centre rule (left = net sell, right = net buy)
+  on one shared scale, so a row reads as a sequence and a column as that
+  session's balance of participants. Direction is encoded by both side and
+  colour, so it survives greyscale and red-green colour blindness. Row sums
+  reconcile exactly against the table beneath — pinned by a test, because a
+  chart that disagrees with its own table is worse than no chart.
+  Class totals do not sum to zero, because both legs of a deal are reported
+  only when each independently crosses the threshold; the table says so.
+
+  This section is the one that depends most on `reports/client_class.py` being
+  right, because it sums per-trade inferences into a headline. Reviewing the
+  17–21 Aug 2026 edition caught the consequence: the Anglophone corporate-suffix
+  list meant `BAYER AG`, `CREDITACCESS INDIA B.V.` and `RESILIENT ASSET
+  MANAGEMENT B V` (the renamed Antfin vehicle that held Paytm) all fell through
+  to `HNI` — the one class that asserts the holder is a private individual.
+  Resilient alone was 101% of the reported HNI net, so the report stated that
+  individuals sold ₹5,819 cr when the truth was ₹12.7 cr and one Dutch holding
+  company. `_FOREIGN_CORP_FORM` now catches those forms for `CORP`, and the FII
+  rule claims genuinely fund-shaped foreign vehicles (Singapore `VCC`, German
+  `FONDS`, university endowments). `confidence()` returning `fallback` is the
+  query that found this; a suffix match therefore counts as `pattern`, so
+  `fallback` keeps meaning "the name carries no signal at all".
+- **First appearances** — names and clients absent from the deal feeds for the
+  prior `REPORT_WEEKLY_LOOKBACK_WEEKS` (default 4) **and** carrying at least
+  `REPORT_WEEKLY_FIRST_MIN_CR` (default ₹100 cr). A failed lookback suppresses
+  the section rather than declaring the whole week new. The floor exists because
+  roughly half the names in any week are absent from a 4-week window — on
+  17–21 Aug 2026 it was 71 of 121 names and 124 of 225 clients, and 108 of those
+  clients traded one name on one session. That is the shape of the feed, not
+  news. The floor applies to the email body only; the comprehensive PDF lists
+  every absent name at any size, and the body states how many it set aside.
+- **Session-by-session trend** — every trading day keeps a row even when it
+  carried nothing, so a hole in the middle of the week is visible.
+
+`_missing_sessions()` is the weekly-only integrity guard: a trading day with no
+bulk **and** no block rows understates every total in the report, and one
+missing session is invisible in a daily (that day's email simply said "none")
+but obvious across five. It flags the subject line, adds a lead callout, and
+exits non-zero so the run goes red — the same trade-off the daily makes, since
+a labelled partial read beats no read.
+
+Regenerating and reviewing without sending anything:
+
+```bash
+# Previews: PATH.html (email body), PATH_comprehensive.html + .pdf
+python -m reports.weekly_deals_report --preview out/week
+
+# Any past week, by any date inside it
+python -m reports.weekly_deals_report --week-of 2026-08-19 --preview out/aug17
+
+# The exact bytes that would go over SMTP, as a .eml — body plus the
+# comprehensive PDF and CSVs, openable in any mail client. This is the way to
+# review a whole edition: the body as the reader sees it and the attachment it
+# points at, in one file.
+python -m reports.weekly_deals_report --week-of 2026-08-19 --eml out/week.eml
+
+# Pin the weekly aggregations
+python -m pytest tests/test_weekly_deals_report.py -q
+```

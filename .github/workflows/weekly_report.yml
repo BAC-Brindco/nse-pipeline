@@ -1,0 +1,104 @@
+name: NSE Weekly Deals Email Report
+
+# Saturday 10:00 IST, alongside the daily report that covers Friday's session.
+# The daily gives Friday's detail; this gives the week that produced it.
+#
+# Same trigger strategy as daily_report.yml, and for the same reason: GitHub's
+# scheduled runs on this repo have been delayed by hours at a time, so the
+# schedule below is a fallback ladder rather than a single expected firing.
+# _claim_slot() makes duplicate triggers harmless -- the first run to insert its
+# row into report_log wins and every later one exits 0 without sending.
+#
+# The slot is keyed on the week's LAST TRADING DAY, so a Saturday firing and a
+# Sunday retry contend for one slot and cannot produce two emails.
+on:
+  schedule:
+    - cron: "30 4 * * 6"   # 04:30 UTC Sat = 10:00 IST — primary
+    - cron: "30 5 * * 6"   # 05:30 UTC Sat = 11:00 IST — 1-hour fallback
+    - cron: "30 7 * * 6"   # 07:30 UTC Sat = 13:00 IST — 3-hour fallback
+  workflow_dispatch:
+    inputs:
+      week_of:
+        description: "Report on the Mon-Fri week containing this date (YYYY-MM-DD; blank = the week just finished)"
+        required: false
+        default: ""
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  weekly-report:
+    name: "10:00 IST Saturday weekly deals report"
+    runs-on: ubuntu-latest
+    # The week's comprehensive PDF is five sessions of deals, so it renders
+    # slower than the daily's. 40 minutes is generous against an observed ~10.
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # continue-on-error, because render_pdf already degrades to None and the
+      # email goes without the attachment. Letting a failed browser download
+      # abort the job would turn a missing attachment into a missing report.
+      - name: Install Chromium for PDF rendering
+        continue-on-error: true
+        run: playwright install --with-deps chromium
+
+      # Catch-up scrape before the report. Upserts are idempotent, so this only
+      # fills gaps -- but on a week where one weekday's scrape failed, this is
+      # the last chance to land it before the week is summarised. Without it the
+      # weekly would inherit the hole and understate every total.
+      #
+      # continue-on-error: a partial scrape must not stop the report. The
+      # report's own _scrape_health() and _missing_sessions() checks label what
+      # is missing rather than letting it render as zero.
+      - name: Refresh bulk / block / short deals (pre-report catch-up)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python main.py --datasets bulk_deals block_deals short_deals
+
+      # Index membership only -- a few static CSVs, seconds to fetch, keeps the
+      # NIFTY badges right through a reshuffle. Market caps are NOT refreshed
+      # here: that is ~1,400 Screener.in requests and belongs to
+      # security_master_refresh.yml, which runs later this same Saturday.
+      - name: Refresh index membership
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python -m scrapers.security_master_refresh --indices-only
+
+      - name: Send weekly deals report (10:00 IST Saturday)
+        env:
+          SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:               ${{ secrets.SUPABASE_KEY }}
+          SMTP_USER:                  ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD:              ${{ secrets.SMTP_PASSWORD }}
+          REPORT_RECIPIENTS:          ${{ secrets.REPORT_RECIPIENTS }}
+          REPORT_WEEKLY_SENDER_NAME:  ${{ vars.REPORT_WEEKLY_SENDER_NAME || 'BAC Weekly Deals' }}
+        run: |
+          if [ -n "${{ github.event.inputs.week_of }}" ]; then
+            python -m reports.weekly_deals_report --week-of "${{ github.event.inputs.week_of }}"
+          else
+            python -m reports.weekly_deals_report
+          fi
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-report-logs-${{ github.run_id }}
+          path: "*.log"
+          retention-days: 7

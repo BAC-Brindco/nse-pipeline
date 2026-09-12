@@ -21,7 +21,11 @@ Env vars required:
   SUPABASE_URL, SUPABASE_KEY
   SMTP_USER           — sending address (bac@brindco.com)
   SMTP_PASSWORD       — Google app-specific password for SMTP_USER
-  REPORT_RECIPIENTS   — comma-separated list, e.g. parv.bangar@brindco.com
+  REPORT_RECIPIENTS   — comma-separated, but in practice ONE address:
+                        bac-reports@brindco.com, the Google Group that is the
+                        single recipient list shared by all three BAC daily
+                        reports. Readers are added in Google Workspace, not by
+                        editing this secret in three repositories.
   REPORT_SENDER_NAME  — optional, defaults to "BAC Daily Deals"
 
 Optional:
