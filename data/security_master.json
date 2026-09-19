@@ -1,8 +1,8 @@
 {
  "_meta": {
-  "generated_at": "2026-09-12T22:36:27+00:00",
-  "symbols": 1774,
-  "with_market_cap": 1661,
+  "generated_at": "2026-09-19T22:26:29+00:00",
+  "symbols": 1798,
+  "with_market_cap": 1684,
   "nifty50": 50,
   "nifty100": 50,
   "nifty500": 401,
@@ -44,6 +44,13 @@
    "cmp": 876.0,
    "shares": 46107306,
    "as_of": "2026-09-06",
+   "mcap_source": "screener.in"
+  },
+  "AAATECH": {
+   "mcap_cr": 112.0,
+   "cmp": 87.0,
+   "shares": 12873563,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "AADHARHFC": {
@@ -507,10 +514,10 @@
    "mcap_source": "screener.in"
   },
   "AGARWALEYE": {
-   "mcap_cr": 16057.0,
-   "cmp": 506.0,
-   "shares": 317332016,
-   "as_of": "2026-08-16",
+   "mcap_cr": 15866.0,
+   "cmp": 500.0,
+   "shares": 317320000,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "AGARWALTUF": {
@@ -549,10 +556,10 @@
    "mcap_source": "screener.in"
   },
   "AHIMSA": {
-   "mcap_cr": 14.9,
-   "cmp": 27.2,
-   "shares": 5477941,
-   "as_of": "2026-08-16",
+   "mcap_cr": 14.1,
+   "cmp": 25.8,
+   "shares": 5465116,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "AHLUCONT": {
@@ -774,10 +781,10 @@
    "tier": "NIFTY500"
   },
   "ANAWIL": {
-   "mcap_cr": 1051.0,
-   "cmp": 420.0,
-   "shares": 25023810,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1113.0,
+   "cmp": 445.0,
+   "shares": 25011236,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "ANDHRAPAP": {
@@ -788,10 +795,10 @@
    "mcap_source": "screener.in"
   },
   "ANDHRSUGAR": {
-   "mcap_cr": 1381.0,
-   "cmp": 102.0,
-   "shares": 135392157,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1275.0,
+   "cmp": 94.1,
+   "shares": 135494155,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "ANGELONE": {
@@ -894,10 +901,10 @@
    "tier": "NIFTY500"
   },
   "APEX": {
-   "mcap_cr": 1332.0,
-   "cmp": 426.0,
-   "shares": 31267606,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1079.0,
+   "cmp": 345.0,
+   "shares": 31275362,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "APLAPOLLO": {
@@ -975,11 +982,18 @@
    "as_of": "2026-09-06",
    "mcap_source": "screener.in"
   },
+  "ARCIL": {
+   "mcap_cr": 4431.0,
+   "cmp": 136.0,
+   "shares": 325808824,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
+  },
   "ARDEE": {
-   "mcap_cr": 1864.0,
-   "cmp": 59.2,
-   "shares": 314864865,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1553.0,
+   "cmp": 49.3,
+   "shares": 315010142,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "ARE&M": {
@@ -1218,10 +1232,10 @@
    "mcap_source": "screener.in"
   },
   "ASTRAZEN": {
-   "mcap_cr": 19382.0,
-   "cmp": 7753.0,
-   "shares": 24999355,
-   "as_of": "2026-08-16",
+   "mcap_cr": 16879.0,
+   "cmp": 6752.0,
+   "shares": 24998519,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "ATALREAL": {
@@ -1381,10 +1395,17 @@
    "mcap_source": "screener.in"
   },
   "AWFIS": {
-   "mcap_cr": 1908.0,
-   "cmp": 267.0,
-   "shares": 71460674,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1973.0,
+   "cmp": 276.0,
+   "shares": 71485507,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
+  },
+  "AWHCL": {
+   "mcap_cr": 1036.0,
+   "cmp": 365.0,
+   "shares": 28383562,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "AWL": {
@@ -1722,10 +1743,10 @@
    "tier": "NIFTY500"
   },
   "BCG": {
-   "mcap_cr": 2004.0,
-   "cmp": 9.93,
-   "shares": 2018126888,
-   "as_of": "2026-08-16",
+   "mcap_cr": 2070.0,
+   "cmp": 10.3,
+   "shares": 2009708738,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "BCLIND": {
@@ -1828,10 +1849,10 @@
    "mcap_source": "screener.in"
   },
   "BHADORA": {
-   "mcap_cr": 196.0,
-   "cmp": 105.0,
-   "shares": 18666667,
-   "as_of": "2026-08-16",
+   "mcap_cr": 229.0,
+   "cmp": 123.0,
+   "shares": 18617886,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "BHARATCOAL": {
@@ -2855,10 +2876,10 @@
    "mcap_source": "screener.in"
   },
   "CORALFINAC": {
-   "mcap_cr": 133.0,
-   "cmp": 33.1,
-   "shares": 40181269,
-   "as_of": "2026-08-16",
+   "mcap_cr": 131.0,
+   "cmp": 32.6,
+   "shares": 40184049,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "CORDELIA": {
@@ -2893,10 +2914,10 @@
    "mcap_source": "screener.in"
   },
   "COSMOFIRST": {
-   "mcap_cr": 2463.0,
-   "cmp": 938.0,
-   "shares": 26257996,
-   "as_of": "2026-08-16",
+   "mcap_cr": 2287.0,
+   "cmp": 871.0,
+   "shares": 26257176,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "COUNCODOS": {
@@ -3193,10 +3214,10 @@
    "tier": "NIFTY500"
   },
   "DECNGOLD": {
-   "mcap_cr": 4480.0,
-   "cmp": 225.0,
-   "shares": 199111111,
-   "as_of": "2026-08-16",
+   "mcap_cr": 4316.0,
+   "cmp": 217.0,
+   "shares": 198894009,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "DEEPA": {
@@ -3324,10 +3345,10 @@
    "mcap_source": "screener.in"
   },
   "DHTL": {
-   "mcap_cr": 10.4,
-   "cmp": 33.2,
-   "shares": 3132530,
-   "as_of": "2026-08-16",
+   "mcap_cr": 8.78,
+   "cmp": 28.0,
+   "shares": 3135714,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "DIACABS": {
@@ -3434,17 +3455,17 @@
    "tier": "NIFTY100"
   },
   "DOLLEX": {
-   "mcap_cr": 128.0,
-   "cmp": 32.2,
-   "shares": 39751553,
-   "as_of": "2026-08-16",
+   "mcap_cr": 149.0,
+   "cmp": 37.2,
+   "shares": 40053763,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "DOLPHIN": {
-   "mcap_cr": 2033.0,
-   "cmp": 508.0,
-   "shares": 40019685,
-   "as_of": "2026-08-16",
+   "mcap_cr": 2662.0,
+   "cmp": 666.0,
+   "shares": 39969970,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "DOMS": {
@@ -3493,6 +3514,13 @@
    "cmp": 1053.0,
    "shares": 12735043,
    "as_of": "2026-09-06",
+   "mcap_source": "screener.in"
+  },
+  "DUCON": {
+   "mcap_cr": 70.7,
+   "cmp": 1.23,
+   "shares": 574796748,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "DUCON-RE1": {
@@ -4169,10 +4197,10 @@
    "mcap_source": "screener.in:not_found"
   },
   "FLEXITUFF": {
-   "mcap_cr": 10.5,
-   "cmp": 3.19,
-   "shares": 32915361,
-   "as_of": "2026-08-16",
+   "mcap_cr": 8.47,
+   "cmp": 2.58,
+   "shares": 32829457,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "FLUOROCHEM": {
@@ -4186,10 +4214,10 @@
    "tier": "NIFTY500"
   },
   "FLYSBS": {
-   "mcap_cr": 764.0,
-   "cmp": 441.0,
-   "shares": 17324263,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1160.0,
+   "cmp": 670.0,
+   "shares": 17313433,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "FMGOETZE": {
@@ -4427,7 +4455,7 @@
   },
   "GENESYS-RE": {
    "mcap_cr": null,
-   "checked": "2026-08-16",
+   "checked": "2026-09-20",
    "mcap_source": "screener.in:not_found"
   },
   "GENUSPOWER": {
@@ -4455,10 +4483,10 @@
    "tier": "NIFTY500"
   },
   "GHCL": {
-   "mcap_cr": 3944.0,
-   "cmp": 429.0,
-   "shares": 91934732,
-   "as_of": "2026-08-16",
+   "mcap_cr": 3885.0,
+   "cmp": 422.0,
+   "shares": 92061611,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "GHCLTEXTIL": {
@@ -4537,6 +4565,13 @@
    "as_of": "2026-09-06",
    "mcap_source": "screener.in",
    "tier": "NIFTY500"
+  },
+  "GLASSWALL": {
+   "mcap_cr": 2370.0,
+   "cmp": 270.0,
+   "shares": 87777778,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
   },
   "GLAXO": {
    "name": "Glaxosmithkline Pharmaceuticals Ltd.",
@@ -4649,10 +4684,10 @@
    "mcap_source": "screener.in"
   },
   "GODAVARIB": {
-   "mcap_cr": 1265.0,
-   "cmp": 247.0,
-   "shares": 51214575,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1233.0,
+   "cmp": 241.0,
+   "shares": 51161826,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "GODFRYPHLP": {
@@ -4772,10 +4807,10 @@
    "mcap_source": "screener.in"
   },
   "GRADIENTE": {
-   "mcap_cr": 6.12,
-   "cmp": 2.72,
-   "shares": 22500000,
-   "as_of": "2026-08-16",
+   "mcap_cr": 5.36,
+   "cmp": 2.38,
+   "shares": 22521008,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "GRANULES": {
@@ -4942,6 +4977,13 @@
    "cmp": 707.0,
    "shares": 73422914,
    "as_of": "2026-08-30",
+   "mcap_source": "screener.in"
+  },
+  "GUJAPOLLO": {
+   "mcap_cr": 454.0,
+   "cmp": 350.0,
+   "shares": 12971429,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "GUJGASLTD": {
@@ -5741,10 +5783,10 @@
    "tier": "NIFTY50"
   },
   "INDIGOPNTS": {
-   "mcap_cr": 5483.0,
-   "cmp": 1149.0,
-   "shares": 47719756,
-   "as_of": "2026-08-16",
+   "mcap_cr": 5249.0,
+   "cmp": 1100.0,
+   "shares": 47718182,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "INDOBORAX": {
@@ -5846,10 +5888,10 @@
    "tier": "NIFTY50"
   },
   "INGERRAND": {
-   "mcap_cr": 14549.0,
-   "cmp": 4609.0,
-   "shares": 31566500,
-   "as_of": "2026-08-16",
+   "mcap_cr": 13119.0,
+   "cmp": 4156.0,
+   "shares": 31566410,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "INNOMET": {
@@ -6044,10 +6086,10 @@
    "mcap_source": "screener.in"
   },
   "IRISDOREME": {
-   "mcap_cr": 1103.0,
-   "cmp": 57.9,
-   "shares": 190500864,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1229.0,
+   "cmp": 64.6,
+   "shares": 190247678,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "IRMENERGY": {
@@ -6273,17 +6315,17 @@
    "mcap_source": "screener.in"
   },
   "JEYYAM": {
-   "mcap_cr": 114.0,
-   "cmp": 24.0,
-   "shares": 47500000,
-   "as_of": "2026-08-16",
+   "mcap_cr": 100.0,
+   "cmp": 21.0,
+   "shares": 47619048,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "JGCHEM": {
-   "mcap_cr": 2375.0,
-   "cmp": 606.0,
-   "shares": 39191419,
-   "as_of": "2026-08-16",
+   "mcap_cr": 2400.0,
+   "cmp": 612.0,
+   "shares": 39215686,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "JINDALSAW": {
@@ -6355,10 +6397,10 @@
    "tier": "NIFTY500"
   },
   "JKIL": {
-   "mcap_cr": 3765.0,
-   "cmp": 498.0,
-   "shares": 75602410,
-   "as_of": "2026-08-16",
+   "mcap_cr": 3682.0,
+   "cmp": 487.0,
+   "shares": 75605749,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "JKLAKSHMI": {
@@ -6624,11 +6666,25 @@
    "as_of": "2026-09-06",
    "mcap_source": "screener.in"
   },
+  "KANOHAR": {
+   "mcap_cr": 6230.0,
+   "cmp": 787.0,
+   "shares": 79161372,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
+  },
   "KANSAINER": {
    "mcap_cr": 15706.0,
    "cmp": 194.0,
    "shares": 809587629,
    "as_of": "2026-09-06",
+   "mcap_source": "screener.in"
+  },
+  "KARAMTARA": {
+   "mcap_cr": 11442.0,
+   "cmp": 356.0,
+   "shares": 321404494,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "KARNIKA": {
@@ -6653,6 +6709,13 @@
    "cmp": 850.0,
    "shares": 345882,
    "as_of": "2026-09-06",
+   "mcap_source": "screener.in"
+  },
+  "KAYA": {
+   "mcap_cr": 518.0,
+   "cmp": 341.0,
+   "shares": 15190616,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "KAYNES": {
@@ -6797,6 +6860,13 @@
    "cmp": 129.0,
    "shares": 199302326,
    "as_of": "2026-09-06",
+   "mcap_source": "screener.in"
+  },
+  "KKJEWELS": {
+   "mcap_cr": 106.0,
+   "cmp": 102.0,
+   "shares": 10392157,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "KLL": {
@@ -6978,10 +7048,10 @@
    "mcap_source": "screener.in"
   },
   "KRYSTAL": {
-   "mcap_cr": 866.0,
-   "cmp": 620.0,
-   "shares": 13967742,
-   "as_of": "2026-08-16",
+   "mcap_cr": 903.0,
+   "cmp": 646.0,
+   "shares": 13978328,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "KSB": {
@@ -7145,6 +7215,13 @@
    "as_of": "2026-09-06",
    "mcap_source": "screener.in"
   },
+  "LCCPROJECT": {
+   "mcap_cr": 4512.0,
+   "cmp": 156.0,
+   "shares": 289230769,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
+  },
   "LCL": {
    "mcap_cr": 6144.0,
    "cmp": 582.0,
@@ -7153,10 +7230,10 @@
    "mcap_source": "screener.in"
   },
   "LEAPIND": {
-   "mcap_cr": 6385.0,
-   "cmp": 145.0,
-   "shares": 440344828,
-   "as_of": "2026-08-16",
+   "mcap_cr": 6188.0,
+   "cmp": 140.0,
+   "shares": 442000000,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "LEMERITE": {
@@ -7740,6 +7817,13 @@
    "as_of": "2026-09-06",
    "mcap_source": "screener.in"
   },
+  "MAZDA": {
+   "mcap_cr": 533.0,
+   "cmp": 266.0,
+   "shares": 20037594,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
+  },
   "MAZDOCK": {
    "name": "Mazagoan Dock Shipbuilders Ltd.",
    "isin": "INE249Z01020",
@@ -8090,6 +8174,11 @@
    "checked": "2026-09-13",
    "mcap_source": "screener.in:not_found"
   },
+  "MOQUALITY": {
+   "mcap_cr": null,
+   "checked": "2026-09-20",
+   "mcap_source": "screener.in:not_found"
+  },
   "MOREALTY": {
    "mcap_cr": null,
    "checked": "2026-09-13",
@@ -8326,10 +8415,10 @@
    "mcap_source": "screener.in"
   },
   "NAGREEKEXP": {
-   "mcap_cr": 76.0,
-   "cmp": 24.3,
-   "shares": 31275720,
-   "as_of": "2026-08-16",
+   "mcap_cr": 66.0,
+   "cmp": 21.1,
+   "shares": 31279621,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "NAM-INDIA": {
@@ -8448,10 +8537,10 @@
    "tier": "NIFTY500"
   },
   "NDLVENTURE": {
-   "mcap_cr": 429.0,
-   "cmp": 127.0,
-   "shares": 33779528,
-   "as_of": "2026-08-16",
+   "mcap_cr": 414.0,
+   "cmp": 123.0,
+   "shares": 33658537,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "NDRINVIT": {
@@ -8881,10 +8970,10 @@
    "tier": "NIFTY500"
   },
   "OBSCP": {
-   "mcap_cr": 2202.0,
-   "cmp": 852.0,
-   "shares": 25845070,
-   "as_of": "2026-08-16",
+   "mcap_cr": 2404.0,
+   "cmp": 930.0,
+   "shares": 25849462,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "OCCLLTD": {
@@ -9010,6 +9099,13 @@
    "mcap_source": "screener.in",
    "tier": "NIFTY50"
   },
+  "ONIDA": {
+   "mcap_cr": 1215.0,
+   "cmp": 32.9,
+   "shares": 369300912,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
+  },
   "ONIXSOLAR": {
    "mcap_cr": 1165.0,
    "cmp": 316.0,
@@ -9032,10 +9128,10 @@
    "mcap_source": "screener.in"
   },
   "OPTIMYSTIX": {
-   "mcap_cr": 440.0,
-   "cmp": 189.0,
-   "shares": 23280423,
-   "as_of": "2026-08-16",
+   "mcap_cr": 324.0,
+   "cmp": 139.0,
+   "shares": 23309353,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "OPTIVALUE": {
@@ -9095,10 +9191,10 @@
    "mcap_source": "screener.in"
   },
   "ORISSAMINE": {
-   "mcap_cr": 2930.0,
-   "cmp": 4883.0,
-   "shares": 6000410,
-   "as_of": "2026-08-16",
+   "mcap_cr": 2293.0,
+   "cmp": 3821.0,
+   "shares": 6001047,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "ORKLAINDIA": {
@@ -9651,10 +9747,10 @@
    "mcap_source": "screener.in"
   },
   "PRAKASH": {
-   "mcap_cr": 2466.0,
-   "cmp": 138.0,
-   "shares": 178695652,
-   "as_of": "2026-08-16",
+   "mcap_cr": 2122.0,
+   "cmp": 119.0,
+   "shares": 178319328,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "PRAMARA": {
@@ -9669,6 +9765,13 @@
    "cmp": 118.0,
    "shares": 22033898,
    "as_of": "2026-08-23",
+   "mcap_source": "screener.in"
+  },
+  "PRANAV": {
+   "mcap_cr": 1211.0,
+   "cmp": 108.0,
+   "shares": 112129630,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "PRANIK": {
@@ -9727,10 +9830,10 @@
    "mcap_source": "screener.in"
   },
   "PRIMESECU": {
-   "mcap_cr": 958.0,
-   "cmp": 282.0,
-   "shares": 33971631,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1009.0,
+   "cmp": 297.0,
+   "shares": 33973064,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "PRINCEPIPE": {
@@ -10073,6 +10176,13 @@
    "as_of": "2026-09-06",
    "mcap_source": "screener.in"
   },
+  "RANASUG": {
+   "mcap_cr": 222.0,
+   "cmp": 14.4,
+   "shares": 154166667,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
+  },
   "RAPIDFLEET": {
    "mcap_cr": 173.0,
    "cmp": 233.0,
@@ -10270,6 +10380,13 @@
    "as_of": "2026-09-13",
    "mcap_source": "screener.in"
   },
+  "RENTOMOJO": {
+   "mcap_cr": 5338.0,
+   "cmp": 513.0,
+   "shares": 104054581,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
+  },
   "RENUKA": {
    "mcap_cr": 5117.0,
    "cmp": 24.0,
@@ -10306,10 +10423,10 @@
    "mcap_source": "screener.in"
   },
   "RGL": {
-   "mcap_cr": 1321.0,
-   "cmp": 123.0,
-   "shares": 107398374,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1648.0,
+   "cmp": 153.0,
+   "shares": 107712418,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "RHETAN": {
@@ -10443,6 +10560,13 @@
    "cmp": 172.0,
    "shares": 261918605,
    "as_of": "2026-09-06",
+   "mcap_source": "screener.in"
+  },
+  "ROSSTECH": {
+   "mcap_cr": 5181.0,
+   "cmp": 1374.0,
+   "shares": 37707424,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "ROTO": {
@@ -10868,10 +10992,10 @@
    "mcap_source": "screener.in"
   },
   "SBCL": {
-   "mcap_cr": 5991.0,
-   "cmp": 1040.0,
-   "shares": 57605769,
-   "as_of": "2026-08-16",
+   "mcap_cr": 6315.0,
+   "cmp": 1096.0,
+   "shares": 57618613,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "SBFC": {
@@ -10983,17 +11107,17 @@
    "mcap_source": "screener.in"
   },
   "SEAMECLTD": {
-   "mcap_cr": 3920.0,
-   "cmp": 1542.0,
-   "shares": 25421530,
-   "as_of": "2026-08-16",
+   "mcap_cr": 4389.0,
+   "cmp": 1726.0,
+   "shares": 25428737,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "SEDEMAC": {
-   "mcap_cr": 13927.0,
-   "cmp": 3153.0,
-   "shares": 44170631,
-   "as_of": "2026-08-16",
+   "mcap_cr": 13904.0,
+   "cmp": 3148.0,
+   "shares": 44167726,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "SEITINVIT": {
@@ -11001,6 +11125,13 @@
    "cmp": 122.0,
    "shares": 324016393,
    "as_of": "2026-09-06",
+   "mcap_source": "screener.in"
+  },
+  "SEJALLTD": {
+   "mcap_cr": 814.0,
+   "cmp": 714.0,
+   "shares": 11400560,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "SEL": {
@@ -11172,7 +11303,7 @@
   },
   "SHANTI-RE": {
    "mcap_cr": null,
-   "checked": "2026-08-16",
+   "checked": "2026-09-20",
    "mcap_source": "screener.in:not_found"
   },
   "SHANTIGEAR": {
@@ -11239,10 +11370,10 @@
    "mcap_source": "screener.in"
   },
   "SHINDL": {
-   "mcap_cr": 640.0,
-   "cmp": 163.0,
-   "shares": 39263804,
-   "as_of": "2026-08-16",
+   "mcap_cr": 634.0,
+   "cmp": 162.0,
+   "shares": 39135802,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "SHIPROCKET": {
@@ -11298,10 +11429,10 @@
    "mcap_source": "screener.in"
   },
   "SHREEJISPG": {
-   "mcap_cr": 10645.0,
-   "cmp": 653.0,
-   "shares": 163016845,
-   "as_of": "2026-08-16",
+   "mcap_cr": 11535.0,
+   "cmp": 708.0,
+   "shares": 162923729,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "SHREEKARNI": {
@@ -11368,6 +11499,13 @@
    "as_of": "2026-09-06",
    "mcap_source": "screener.in",
    "tier": "NIFTY100"
+  },
+  "SIGACHI": {
+   "mcap_cr": 1131.0,
+   "cmp": 29.6,
+   "shares": 382094595,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
   },
   "SIGNATURE": {
    "name": "Signatureglobal (India) Ltd.",
@@ -11473,6 +11611,13 @@
    "as_of": "2026-09-06",
    "mcap_source": "screener.in"
   },
+  "SKFINDUS": {
+   "mcap_cr": 14753.0,
+   "cmp": 2984.0,
+   "shares": 49440349,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
+  },
   "SKIPPER": {
    "mcap_cr": 6676.0,
    "cmp": 591.0,
@@ -11528,10 +11673,10 @@
    "mcap_source": "screener.in"
   },
   "SMSPHARMA": {
-   "mcap_cr": 3384.0,
-   "cmp": 361.0,
-   "shares": 93739612,
-   "as_of": "2026-08-16",
+   "mcap_cr": 4148.0,
+   "cmp": 443.0,
+   "shares": 93634312,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "SNXT30BEES": {
@@ -11747,6 +11892,13 @@
    "mcap_source": "screener.in",
    "tier": "NIFTY500"
   },
+  "STEAMHOUSE": {
+   "mcap_cr": 2708.0,
+   "cmp": 98.0,
+   "shares": 276326531,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
+  },
   "STERTOOLS": {
    "mcap_cr": 804.0,
    "cmp": 221.0,
@@ -11837,10 +11989,10 @@
    "mcap_source": "screener.in:not_found"
   },
   "SUMEETINDS": {
-   "mcap_cr": 1026.0,
-   "cmp": 14.8,
-   "shares": 693243243,
-   "as_of": "2026-08-16",
+   "mcap_cr": 664.0,
+   "cmp": 9.56,
+   "shares": 694560669,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "SUMICHEM": {
@@ -11938,10 +12090,10 @@
    "mcap_source": "screener.in"
   },
   "SUPREMEENG": {
-   "mcap_cr": 58.2,
-   "cmp": 2.33,
-   "shares": 249785408,
-   "as_of": "2026-08-16",
+   "mcap_cr": 89.5,
+   "cmp": 3.58,
+   "shares": 250000000,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "SUPREMEIND": {
@@ -11962,17 +12114,17 @@
    "mcap_source": "screener.in"
   },
   "SURANI": {
-   "mcap_cr": 155.0,
-   "cmp": 100.0,
-   "shares": 15500000,
-   "as_of": "2026-08-16",
+   "mcap_cr": 149.0,
+   "cmp": 96.0,
+   "shares": 15520833,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "SURYALA": {
-   "mcap_cr": 160.0,
-   "cmp": 376.0,
-   "shares": 4255319,
-   "as_of": "2026-08-16",
+   "mcap_cr": 169.0,
+   "cmp": 395.0,
+   "shares": 4278481,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "SURYAROSNI": {
@@ -12096,10 +12248,10 @@
    "mcap_source": "screener.in"
   },
   "TAKE": {
-   "mcap_cr": 351.0,
-   "cmp": 23.8,
-   "shares": 147478992,
-   "as_of": "2026-08-16",
+   "mcap_cr": 236.0,
+   "cmp": 16.0,
+   "shares": 147500000,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "TANLA": {
@@ -12324,10 +12476,10 @@
    "tier": "NIFTY50"
   },
   "TECHNOCRAF": {
-   "mcap_cr": 1232.0,
-   "cmp": 311.0,
-   "shares": 39614148,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1746.0,
+   "cmp": 441.0,
+   "shares": 39591837,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "TECHNOE": {
@@ -12475,10 +12627,10 @@
    "mcap_source": "screener.in"
   },
   "THOMASCOTT": {
-   "mcap_cr": 509.0,
-   "cmp": 347.0,
-   "shares": 14668588,
-   "as_of": "2026-08-16",
+   "mcap_cr": 351.0,
+   "cmp": 237.0,
+   "shares": 14810127,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "THYROCARE": {
@@ -12513,10 +12665,10 @@
    "tier": "NIFTY500"
   },
   "TIJARIA": {
-   "mcap_cr": 17.3,
-   "cmp": 6.03,
-   "shares": 28689884,
-   "as_of": "2026-08-16",
+   "mcap_cr": 21.2,
+   "cmp": 7.4,
+   "shares": 28648649,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "TIL": {
@@ -12945,10 +13097,10 @@
    "mcap_source": "screener.in"
   },
   "UNIVCABLES": {
-   "mcap_cr": 5705.0,
-   "cmp": 1644.0,
-   "shares": 34701946,
-   "as_of": "2026-08-16",
+   "mcap_cr": 5125.0,
+   "cmp": 1477.0,
+   "shares": 34698714,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "UNOMINDA": {
@@ -13068,10 +13220,10 @@
    "tier": "NIFTY100"
   },
   "VCL": {
-   "mcap_cr": 31.0,
-   "cmp": 1.69,
-   "shares": 183431953,
-   "as_of": "2026-08-16",
+   "mcap_cr": 29.6,
+   "cmp": 1.61,
+   "shares": 183850932,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "VEDAVAAG": {
@@ -13090,6 +13242,13 @@
    "as_of": "2026-09-06",
    "mcap_source": "screener.in",
    "tier": "NIFTY100"
+  },
+  "VEEGALAND": {
+   "mcap_cr": 713.0,
+   "cmp": 146.0,
+   "shares": 48835616,
+   "as_of": "2026-09-20",
+   "mcap_source": "screener.in"
   },
   "VENKEYS": {
    "mcap_cr": 2338.0,
@@ -13219,10 +13378,10 @@
    "mcap_source": "screener.in"
   },
   "VINATIORGA": {
-   "mcap_cr": 13874.0,
-   "cmp": 1338.0,
-   "shares": 103692078,
-   "as_of": "2026-08-16",
+   "mcap_cr": 12802.0,
+   "cmp": 1235.0,
+   "shares": 103659919,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "VINCOFE": {
@@ -13244,6 +13403,13 @@
    "cmp": 37.8,
    "shares": 19206349,
    "as_of": "2026-08-23",
+   "mcap_source": "screener.in"
+  },
+  "VINOD": {
+   "mcap_cr": 137.0,
+   "cmp": 84.8,
+   "shares": 16155660,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "VINYAS": {
@@ -13310,10 +13476,10 @@
    "mcap_source": "screener.in"
   },
   "VIVO": {
-   "mcap_cr": 29.3,
-   "cmp": 145.0,
-   "shares": 2020690,
-   "as_of": "2026-08-16",
+   "mcap_cr": 30.4,
+   "cmp": 151.0,
+   "shares": 2013245,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "VIYASH": {
@@ -13441,10 +13607,10 @@
    "mcap_source": "screener.in"
   },
   "WEL": {
-   "mcap_cr": 1944.0,
-   "cmp": 145.0,
-   "shares": 134068966,
-   "as_of": "2026-08-16",
+   "mcap_cr": 977.0,
+   "cmp": 72.9,
+   "shares": 134019204,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "WELCORP": {
@@ -13513,10 +13679,10 @@
    "tier": "NIFTY500"
   },
   "WINDLAS": {
-   "mcap_cr": 1959.0,
-   "cmp": 949.0,
-   "shares": 20642782,
-   "as_of": "2026-08-16",
+   "mcap_cr": 2289.0,
+   "cmp": 1109.0,
+   "shares": 20640216,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "WINNY": {
@@ -13589,10 +13755,10 @@
    "mcap_source": "screener.in"
   },
   "YATRA": {
-   "mcap_cr": 1789.0,
-   "cmp": 114.0,
-   "shares": 156929825,
-   "as_of": "2026-08-16",
+   "mcap_cr": 1645.0,
+   "cmp": 105.0,
+   "shares": 156666667,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "YESBANK": {
@@ -13630,10 +13796,10 @@
    "mcap_source": "screener.in"
   },
   "ZENITHDRUG": {
-   "mcap_cr": 76.6,
-   "cmp": 44.6,
-   "shares": 17174888,
-   "as_of": "2026-08-16",
+   "mcap_cr": 74.2,
+   "cmp": 43.2,
+   "shares": 17175926,
+   "as_of": "2026-09-20",
    "mcap_source": "screener.in"
   },
   "ZENSARTECH": {
