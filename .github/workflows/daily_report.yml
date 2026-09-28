@@ -1,26 +1,38 @@
 name: NSE Daily Deals Email Report
 
 on:
-  # Primary trigger: cron-job.org fires workflow_dispatch at exactly 04:30 UTC
-  # (= 10:00 IST) every Tue–Sat via the GitHub API. These GHA schedules are
-  # fallbacks only — they fire if cron-job.org misses a day.
+  # Three runs per morning, Mon–Sat IST:
+  #   08:00  the edition        — sent to REPORT_RECIPIENTS
+  #   09:30  first re-check     — re-issued only if NSE published new deals
+  #   10:30  final re-check     — same; short deals are the usual late arrivals
+  # Every run also emails a one-line operator log to parv.bangar@brindco.com
+  # only (reports/ops_log.py) — sent, no change, no report today, or failed.
   #
-  # Old approach (sleep until 09:45 IST) was broken: the 00:00 UTC trigger needed
-  # a 255-min sleep but timeout-minutes was 210, so it silently timed out every day.
-  # Removed sleep entirely — _claim_slot() idempotency prevents duplicate emails
-  # if more than one trigger fires close together.
+  # What a run does is decided from report_log, not from which trigger fired
+  # (see "Run plan" in reports/daily_deals_report.py), so the triggers are
+  # interchangeable and a duplicate is a silent no-op.
+  #
+  # Primary trigger: cron-job.org fires workflow_dispatch at 08:00, 09:30 and
+  # 10:30 IST. These GHA schedules are fallbacks only — GitHub has delayed this
+  # repo's schedules by hours, which is why cron-job.org is primary. Mondays
+  # run too: there is no new session, so the run just logs "not sent".
   schedule:
-    - cron: "30 4 * * 2-6"   # 04:30 UTC = 10:00 IST — primary GHA fallback
-    - cron: "00 5 * * 2-6"   # 05:00 UTC = 10:30 IST — 30-min fallback
-    - cron: "30 5 * * 2-6"   # 05:30 UTC = 11:00 IST — 1-hour fallback
+    - cron: "30 2 * * 1-6"   # 02:30 UTC = 08:00 IST — edition
+    - cron: "00 4 * * 1-6"   # 04:00 UTC = 09:30 IST — re-check
+    - cron: "00 5 * * 1-6"   # 05:00 UTC = 10:30 IST — final re-check
   workflow_dispatch:
+
+# Serialise runs so two triggers for the same slot cannot race each other.
+concurrency:
+  group: daily-deals-report
+  cancel-in-progress: false
 
 env:
   PYTHON_VERSION: "3.11"
 
 jobs:
   scrape-and-report:
-    name: "10:00 IST daily deals report"
+    name: "Daily deals report (08:00 edition / 09:30, 10:30 re-checks)"
     runs-on: ubuntu-latest
     timeout-minutes: 30   # scrape + report takes ~15 min; 30 is generous
 
@@ -76,7 +88,7 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python -m scrapers.security_master_refresh --indices-only
 
-      - name: Send daily deals report (10:00 IST)
+      - name: Send daily deals report / re-check for new deals
         env:
           SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY:        ${{ secrets.SUPABASE_KEY }}
@@ -86,6 +98,21 @@ jobs:
           REPORT_SENDER_NAME:  ${{ vars.REPORT_SENDER_NAME || 'BAC Daily Deals' }}
           SLACK_WEBHOOK_URL:   ${{ secrets.SLACK_WEBHOOK_URL }}
         run: python -m reports.daily_deals_report
+
+      # Python sends its own log email for every outcome, including a report
+      # that raised. This step covers the job dying before Python could say
+      # anything (checkout, pip install, a missing secret). System python3 and
+      # stdlib only, because the failed step may have been pip itself.
+      - name: Email operator log if the job failed
+        if: failure()
+        env:
+          SMTP_USER:     ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: >
+          python3 -m reports.ops_log --if-not-sent --report "Daily Deals"
+          --status FAILED
+          --headline "The daily deals workflow failed before the report step could report. Nothing was sent to the desk from this run."
+          --detail "Trigger: ${{ github.event_name }}"
 
       - name: Upload logs on failure
         if: failure()
