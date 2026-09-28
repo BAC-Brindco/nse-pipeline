@@ -1,8 +1,10 @@
 """
 Daily NSE deals email report — humanised newspaper format.
 
-Runs once per trading-day morning (Tue–Sat IST), reporting on the previous
-trading day's bulk / block / short deals.
+Runs at 08:00 IST Mon–Sat, reporting on the previous trading day's bulk / block
+/ short deals, then re-checks at 09:30 and 10:30 and re-issues the report only
+if NSE has published new rows since (short deals routinely land late). Every
+run emails the operator a one-line log (reports/ops_log.py). See "Run plan".
 
 Two editions of the same report are produced each run:
 
@@ -50,6 +52,7 @@ import pandas as pd
 
 from reports import client_class as cc
 from reports import design as d
+from reports.ops_log import OPS_LOG_RECIPIENT, send_ops_log
 from reports.pdf_render import render_pdf
 from utils import security_master as sm
 
@@ -351,39 +354,274 @@ def _degraded_card(degraded: list[str]) -> dict:
 
 # ─── Idempotency ──────────────────────────────────────────────────────────────
 
-def _claim_slot(report_date: date, recipients: list[str]) -> bool:
+# A run that dies without reaching _mark_failed leaves the slot 'pending'
+# forever. The job's own timeout is 30 minutes, so a pending slot older than
+# this is certainly dead rather than in flight.
+_STALE_PENDING_MINUTES = 35
+
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _parse_ts(value) -> datetime | None:
+    if not value:
+        return None
+    try:
+        ts = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
+def _slot_row(report_type: str, report_date: date) -> dict | None:
+    from database.client import get_client
+    resp = (get_client().table("report_log").select("*")
+            .eq("report_type", report_type).eq("report_date", report_date.isoformat())
+            .limit(1).execute())
+    return (resp.data or [None])[0]
+
+
+def _insert_slot(report_type: str, report_date: date, recipients: list[str]) -> bool:
+    """Insert a pending row; False if one already exists (another run owns it)."""
     from database.client import get_client
     try:
         get_client().table("report_log").insert({
-            "report_type": REPORT_TYPE,
+            "report_type": report_type,
             "report_date": report_date.isoformat(),
             "status": "pending",
             "recipients": ",".join(recipients),
         }).execute()
         return True
     except Exception as exc:  # noqa: BLE001
-        logger.info("Slot for %s already claimed (%s) — exiting.", report_date, type(exc).__name__)
+        logger.info("Slot %s/%s already exists (%s).", report_type, report_date, type(exc).__name__)
         return False
 
 
-def _mark_sent(report_date: date) -> None:
+def _set_slot(report_type: str, report_date: date, **fields) -> None:
     from database.client import get_client
-    get_client().table("report_log").update({
-        "status": "sent",
-        "sent_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("report_type", REPORT_TYPE).eq("report_date", report_date.isoformat()).execute()
+    get_client().table("report_log").update(fields).eq(
+        "report_type", report_type).eq("report_date", report_date.isoformat()).execute()
+
+
+def _claim_slot(report_date: date, recipients: list[str]) -> bool:
+    """Claim the day's main send slot. True means this run sends the edition.
+
+      sent            → never reclaim; the report went out
+      failed          → reclaim; that is exactly what the later triggers are for
+      pending, stale  → reclaim; the holder died without marking it
+      pending, fresh  → leave it; another run is genuinely in flight
+
+    The original version never reclaimed, so a failed first attempt made every
+    fallback exit 0 and the day produced no email with every run green.
+    """
+    if _insert_slot(REPORT_TYPE, report_date, recipients):
+        return True
+    try:
+        row = _slot_row(REPORT_TYPE, report_date)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read the slot for %s (%s) — not sending.", report_date, exc)
+        return False
+    if not row:
+        return False
+    status = str(row.get("status") or "").lower()
+    claimed = _parse_ts(row.get("claimed_at"))
+    stale = claimed is None or (
+        datetime.now(timezone.utc) - claimed > timedelta(minutes=_STALE_PENDING_MINUTES))
+    if status == "failed" or (status == "pending" and stale):
+        _set_slot(REPORT_TYPE, report_date, status="pending", error_message=None,
+                  recipients=",".join(recipients),
+                  claimed_at=datetime.now(timezone.utc).isoformat())
+        logger.warning("Reclaimed the send slot for %s (previous status: %s).", report_date, status)
+        return True
+    return False
+
+
+def _mark_sent(report_date: date, snapshot: dict | None = None) -> None:
+    fields = {"status": "sent", "sent_at": datetime.now(timezone.utc).isoformat()}
+    if snapshot is not None:
+        fields["snapshot"] = snapshot
+    _set_slot(REPORT_TYPE, report_date, **fields)
 
 
 def _mark_failed(report_date: date, err: str) -> None:
-    from database.client import get_client
     try:
-        get_client().table("report_log").update({
-            "status": "failed",
-            "error_message": err[:2000],
-            "sent_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("report_type", REPORT_TYPE).eq("report_date", report_date.isoformat()).execute()
+        _set_slot(REPORT_TYPE, report_date, status="failed", error_message=err[:2000],
+                  sent_at=datetime.now(timezone.utc).isoformat())
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not mark failed: %s", exc)
+
+
+# ─── Run plan: 08:00 edition, 09:30 and 10:30 re-checks ───────────────────────
+#
+# One workflow, triggered at 08:00, 09:30 and 10:30 IST (Mon–Sat). What a given
+# run does is decided from report_log, not from which trigger fired, so any
+# trigger can stand in for a missed one:
+#
+#   no edition sent yet for report_date       → SEND the edition (08:00, or a
+#                                               later trigger if 08:00 failed)
+#   edition already sent on an earlier day    → IDLE: no session to report today
+#                                               (Mondays, the day after a holiday)
+#   edition sent today, inside a check window → CHECK: re-read the deal tables
+#                                               and re-issue the report only if
+#                                               NSE published rows since the last
+#                                               send (short deals often land late)
+#   anything else                             → SILENT: a duplicate trigger
+#
+# Every non-silent outcome sends the operator a log email (reports/ops_log.py).
+# Each check window and each idle day is its own report_log row, so a duplicate
+# trigger cannot send a second update or a second log.
+
+_CHECK_WINDOWS = (
+    # (slot, opens, closes) in IST. Wide enough to absorb trigger jitter, narrow
+    # enough that a GitHub schedule delayed by hours cannot fire a stray update
+    # into the afternoon.
+    ("0930", (9, 20), (10, 20)),
+    ("1030", (10, 20), (12, 30)),
+)
+_IDLE_TYPE = f"{REPORT_TYPE}_idle"
+
+
+def _check_type(slot: str) -> str:
+    return f"{REPORT_TYPE}_check_{slot}"
+
+
+def _check_slot_for(now_ist: datetime) -> str | None:
+    hm = (now_ist.hour, now_ist.minute)
+    for slot, opens, closes in _CHECK_WINDOWS:
+        if opens <= hm < closes:
+            return slot
+    return None
+
+
+def _plan_run(report_date: date, today: date, now_ist: datetime,
+              recipients: list[str]) -> tuple[str, dict | None]:
+    """→ ("send" | "check:<slot>" | "idle" | "silent", main slot row)."""
+    if _claim_slot(report_date, recipients):
+        return "send", None
+    try:
+        row = _slot_row(REPORT_TYPE, report_date)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read the slot for %s: %s", report_date, exc)
+        return "silent", None
+    if not row or str(row.get("status") or "").lower() != "sent":
+        logger.info("Slot for %s is held by another run — exiting.", report_date)
+        return "silent", row
+    sent_at = _parse_ts(row.get("sent_at"))
+    if sent_at and sent_at.astimezone(_IST).date() < today:
+        return "idle", row
+    slot = _check_slot_for(now_ist)
+    if slot is None:
+        logger.info("Edition for %s already sent and %s IST is outside every check "
+                    "window — exiting.", report_date, now_ist.strftime("%H:%M"))
+        return "silent", row
+    return f"check:{slot}", row
+
+
+# ─── Snapshot of what the desk has already been sent ──────────────────────────
+# One short hash per deal row over its natural key (the table's unique
+# constraint, less deal_date). Stored on the main report_log row after every
+# send, so a check can name exactly which rows are new rather than just noticing
+# that a count moved.
+
+_SNAPSHOT_COLS = {
+    "bulk":  ("symbol", "client_name", "buy_sell", "quantity", "avg_price"),
+    "block": ("symbol", "client_name", "buy_sell", "quantity", "trade_price"),
+    "short": ("symbol", "quantity"),
+}
+_NUMERIC_COLS = {"quantity", "avg_price", "trade_price"}
+
+
+def _norm(col: str, v) -> str:
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return ""
+    if col in _NUMERIC_COLS:
+        try:
+            return f"{float(v):.4f}"
+        except (TypeError, ValueError):
+            pass
+    return str(v).strip().upper()
+
+
+def _row_hashes(df: pd.DataFrame, kind: str) -> pd.Series:
+    import hashlib
+    if df.empty:
+        return pd.Series([], dtype=str, index=df.index)
+    cols = _SNAPSHOT_COLS[kind]
+    return df.apply(
+        lambda r: hashlib.sha1(
+            "|".join(_norm(c, r.get(c)) for c in cols).encode("utf-8")
+        ).hexdigest()[:16],
+        axis=1,
+    )
+
+
+def _snapshot(frames: dict[str, pd.DataFrame]) -> dict:
+    return {k: sorted(set(_row_hashes(df, k))) for k, df in frames.items()}
+
+
+def _new_since(frames: dict[str, pd.DataFrame], baseline: dict) -> dict[str, pd.DataFrame]:
+    """Rows present now whose hash was not in the last-sent snapshot."""
+    out = {}
+    for kind, df in frames.items():
+        if df.empty:
+            out[kind] = df
+            continue
+        seen = set(baseline.get(kind) or [])
+        out[kind] = df[~_row_hashes(df, kind).isin(seen)]
+    return out
+
+
+def _latest_scrape_failures(since_utc: datetime) -> list[str]:
+    """Deal datasets whose most recent scrape since `since_utc` did not succeed.
+
+    A check that finds nothing new only means something if the re-scrape
+    actually reached NSE; this is what the log email flags when it did not.
+    """
+    from database.client import get_client
+    bad = []
+    try:
+        client = get_client()
+        for ds in _DEAL_DATASETS:
+            got = (client.table("scrape_run_log").select("status,start_time")
+                   .eq("dataset", ds).gte("start_time", since_utc.isoformat())
+                   .order("start_time", desc=True).limit(1).execute())
+            if not got.data or got.data[0].get("status") != "success":
+                bad.append(ds)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read scrape_run_log: %s", exc)
+    return bad
+
+
+def _count_line(counts: dict[str, int]) -> str:
+    return ", ".join(f"{counts.get(k, 0)} {k}" for k in ("bulk", "block", "short"))
+
+
+def _new_summary(new: dict[str, pd.DataFrame]) -> tuple[dict[str, int], list[str]]:
+    counts = {k: len(v) for k, v in new.items()}
+    syms: list[str] = []
+    for k in ("short", "bulk", "block"):
+        df = new.get(k)
+        if df is not None and not df.empty and "symbol" in df.columns:
+            for s in df["symbol"].dropna().astype(str):
+                if s not in syms:
+                    syms.append(s)
+    return counts, syms
+
+
+def _update_card(counts: dict[str, int], syms: list[str], prior_ist: str) -> dict:
+    parts = []
+    for k, word in (("short", "short deal"), ("bulk", "bulk deal"), ("block", "block deal")):
+        n = counts.get(k, 0)
+        if n:
+            parts.append(f"{n} {word}{'' if n == 1 else 's'}")
+    shown = ", ".join(_e(s) for s in syms[:12]) + (" and others" if len(syms) > 12 else "")
+    return {
+        "title": "Updated edition &mdash; new filings since the earlier send",
+        "body": (
+            f"NSE published {', '.join(parts)} after the {prior_ist} IST edition went "
+            f"out ({shown}). This edition supersedes it; the attached PDF and CSVs "
+            f"carry the complete session."
+        ),
+    }
 
 
 # ─── Data fetch ───────────────────────────────────────────────────────────────
@@ -1673,8 +1911,34 @@ def main(
         recipients    = [r.strip() for r in _env("REPORT_RECIPIENTS").split(",") if r.strip()]
         sender_name   = os.environ.get("REPORT_SENDER_NAME", "BAC Daily Deals")
 
-        if not _claim_slot(report_date, recipients):
+    # ── Decide what this run is for (see "Run plan" above) ───────────────────
+    action, main_row, check_type = "send", None, None
+    session = _house_date(report_date)
+    if not dry_run:
+        now_ist = datetime.now(_IST)
+        action, main_row = _plan_run(report_date, today, now_ist, recipients)
+        if action == "silent":
             return 0
+        if action == "idle":
+            if _insert_slot(_IDLE_TYPE, today, [OPS_LOG_RECIPIENT]):
+                sent_at = _parse_ts(main_row.get("sent_at")) if main_row else None
+                when = sent_at.astimezone(_IST).strftime("%a %d %b %H:%M IST") if sent_at else "earlier"
+                send_ops_log(
+                    "Daily Deals", "NOT SENT",
+                    f"No daily deals report today. The latest session ({session}) "
+                    f"was already reported on {when}; nothing new to send.",
+                    [f"Today (IST): {_house_date(today)}",
+                     "Expected on Mondays and on the day after an exchange holiday."],
+                )
+                _set_slot(_IDLE_TYPE, today, status="not_sent")
+            return 0
+        if action.startswith("check:"):
+            check_type = _check_type(action.split(":", 1)[1])
+            if not _insert_slot(check_type, report_date, recipients):
+                return 0  # a duplicate trigger already ran this window's check
+
+    slot = action.split(":", 1)[1] if check_type else ""
+    run_label = f"{slot[:2]}:{slot[2:]} re-check" if check_type else "Edition"
 
     try:
         generated_at = datetime.now(timezone.utc)
@@ -1683,6 +1947,47 @@ def main(
         block_raw = _fetch("block_deals", report_date)
         short_raw = _fetch("short_deals", report_date)
         logger.info("Fetched: %d bulk, %d block, %d short", len(bulk_raw), len(block_raw), len(short_raw))
+
+        frames = {"bulk": bulk_raw, "block": block_raw, "short": short_raw}
+        snapshot = _snapshot(frames)
+        totals = {k: len(v) for k, v in frames.items()}
+
+        update_card = None
+        if check_type:
+            baseline = (main_row or {}).get("snapshot")
+            prior = _parse_ts((main_row or {}).get("sent_at"))
+            prior_ist = prior.astimezone(_IST).strftime("%H:%M") if prior else "earlier"
+            scrape_bad = _latest_scrape_failures(generated_at - timedelta(minutes=45))
+            scrape_note = (
+                [f"WARNING: the re-scrape did not succeed for {', '.join(scrape_bad)} — "
+                 f"NSE may have published rows this check could not see."]
+                if scrape_bad else ["Re-scrape of bulk / block / short deals succeeded."]
+            )
+            if not baseline:
+                _set_slot(check_type, report_date, status="skipped",
+                          error_message="no snapshot on the main slot")
+                send_ops_log(
+                    "Daily Deals", "SKIPPED",
+                    f"{run_label}: cannot compare — the {prior_ist} edition for {session} "
+                    f"has no stored snapshot (sent before this feature existed). Nothing sent.",
+                    [f"Rows now: {_count_line(totals)}"],
+                )
+                return 0
+            new = _new_since(frames, baseline)
+            new_counts, new_syms = _new_summary(new)
+            if not any(new_counts.values()):
+                _set_slot(check_type, report_date, status="no_change",
+                          sent_at=datetime.now(timezone.utc).isoformat())
+                send_ops_log(
+                    "Daily Deals", "SKIPPED" if scrape_bad else "NO CHANGE",
+                    f"{run_label}: nothing new published for {session} since the "
+                    f"{prior_ist} IST edition. No update sent.",
+                    [f"Rows on file: {_count_line(totals)}", *scrape_note],
+                )
+                return 0
+            update_card = _update_card(new_counts, new_syms, prior_ist)
+            logger.info("New since %s IST: %s (%s)", prior_ist, _count_line(new_counts),
+                        ", ".join(new_syms[:20]))
 
         # Distinguish "quiet session" from "collection failed" before anything
         # is rendered, so a blank section can be labelled rather than implied.
@@ -1706,6 +2011,8 @@ def main(
         n_full_names = len(_all_symbols(bulk, block, short))
         if degraded:
             full["highlights"] = [_degraded_card(degraded)] + full["highlights"]
+        if update_card:
+            full["highlights"] = [update_card] + full["highlights"]
 
         html_full = _build_html(
             report_date, full["bulk"], full["block"], full["short"],
@@ -1729,6 +2036,8 @@ def main(
         )
         if degraded:
             focus["highlights"] = [_degraded_card(degraded)] + focus["highlights"]
+        if update_card:
+            focus["highlights"] = [update_card] + focus["highlights"]
         html_focus = _build_html(
             report_date, focus["bulk"], focus["block"], focus["short"],
             focus["bulk_sym"], focus["block_sym"], focus["short_filt"],
@@ -1774,6 +2083,8 @@ def main(
         # The subject is the only part guaranteed to be seen, so the warning
         # goes there too -- a body banner is missable on a phone preview.
         subject = f"BAC Daily Deals — NSE — {pretty_date}"
+        if update_card:
+            subject = f"[UPDATED {datetime.now(_IST):%H:%M} IST] {subject}"
         if degraded:
             subject = f"[DATA INCOMPLETE] {subject}"
 
@@ -1818,15 +2129,39 @@ def main(
             subject=subject,
             html=html_focus, attachments=attachments,
         )
-        _mark_sent(report_date)
+        # The main slot's snapshot always describes the latest thing the desk
+        # received, so the next check diffs against the update, not the 08:00.
+        _mark_sent(report_date, snapshot)
+        if check_type:
+            _set_slot(check_type, report_date, status="sent",
+                      sent_at=datetime.now(timezone.utc).isoformat())
         logger.info(
             "Sent report for %s to %s (body: %d focus names; PDF: %s)",
             report_date, recipients, len(focus_syms),
             f"{len(pdf_bytes) / 1024:.0f} KB" if pdf_bytes else "unavailable",
         )
+        details = [
+            f"To: {', '.join(recipients)}",
+            f"Rows: {_count_line(totals)}",
+            f"PDF: {f'{len(pdf_bytes) / 1024:.0f} KB' if pdf_bytes else 'NOT attached (render failed)'}",
+        ]
+        if degraded:
+            details.insert(0, f"DATA INCOMPLETE — scrape failed for {', '.join(degraded)}; "
+                              f"sections shown as unavailable. A later re-check will "
+                              f"re-issue the report if the data arrives.")
+        if check_type:
+            details.insert(0, f"New since the {prior_ist} IST edition: {_count_line(new_counts)} "
+                              f"({', '.join(new_syms[:15])}{' …' if len(new_syms) > 15 else ''})")
+        send_ops_log(
+            "Daily Deals",
+            "INCOMPLETE" if degraded else ("UPDATED" if check_type else "SENT"),
+            (f"{run_label}: new deals found for {session} — updated report sent."
+             if check_type else f"Daily deals report for {session} sent."),
+            details,
+        )
 
         slack_webhook = os.environ.get("SLACK_WEBHOOK_URL", "")
-        if slack_webhook:
+        if slack_webhook and not check_type:
             try:
                 # Slack stays on the comprehensive scope — it is a channel
                 # notification, not the curated morning read.
@@ -1848,7 +2183,22 @@ def main(
     except Exception as exc:  # noqa: BLE001
         logger.exception("Report generation failed")
         if not dry_run:
-            _mark_failed(report_date, f"{type(exc).__name__}: {exc}")
+            err = f"{type(exc).__name__}: {exc}"
+            if check_type:
+                try:
+                    _set_slot(check_type, report_date, status="failed", error_message=err[:2000])
+                except Exception:  # noqa: BLE001
+                    pass
+            else:
+                _mark_failed(report_date, err)
+            send_ops_log(
+                "Daily Deals", "FAILED",
+                (f"{run_label} for {session} failed — no update sent. The 08:00 "
+                 f"edition already delivered is unaffected." if check_type else
+                 f"Daily deals report for {session} FAILED — nothing was sent to the "
+                 f"desk. The next scheduled trigger will retry automatically."),
+                [err[:1500]],
+            )
         return 1
 
 

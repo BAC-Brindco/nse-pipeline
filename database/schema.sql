@@ -244,6 +244,9 @@ CREATE TABLE IF NOT EXISTS report_log (
     CONSTRAINT report_log_unique UNIQUE (report_type, report_date)
 );
 CREATE INDEX IF NOT EXISTS idx_report_log_date ON report_log (report_date);
+-- Row hashes of what the desk was last sent; the 09:30 / 10:30 daily-deals
+-- re-checks diff the tables against this to decide whether to re-issue.
+ALTER TABLE report_log ADD COLUMN IF NOT EXISTS snapshot JSONB;
 
 -- ─────────────────────────────────────────────
 -- Provenance columns (data_source + source_url)
