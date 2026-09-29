@@ -2426,7 +2426,7 @@ def _build_html(
         )
 
     body = d.masthead(
-        kicker="Brindco &middot; Quant Desk",
+        kicker="RAAS Research Capital &middot; Quant Desk",
         title="Weekly Deals",
         dateline=f"<strong>{_house_range(start, end)}</strong> &middot; {edition_label}",
         subline=(

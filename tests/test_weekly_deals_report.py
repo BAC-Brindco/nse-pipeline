@@ -924,5 +924,5 @@ def test_both_editions_carry_the_new_email_safe_charts(bulk, block, short):
 
 def test_the_masthead_uses_the_house_name(bulk, block, short):
     email, _ = _editions(bulk, block, short)
-    assert "Brindco &middot; Quant Desk" in email
+    assert "RAAS Research Capital &middot; Quant Desk" in email
     assert "Alpha Capital" not in email

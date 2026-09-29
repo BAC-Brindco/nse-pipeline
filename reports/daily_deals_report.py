@@ -1466,7 +1466,7 @@ def _build_html(
         )
 
     head = d.masthead(
-        kicker="Brindco Alpha Capital &middot; Quant Desk",
+        kicker="RAAS Research Capital &middot; Quant Desk",
         title="Daily Deals",
         dateline=f"<strong>{_house_date(report_date)}</strong> &middot; {edition_label}",
         subline=(
@@ -1749,7 +1749,7 @@ def _build_slack_blocks(
     blocks.append({"type": "header", "text": {"type": "plain_text",
         "text": f"Daily Deals — NSE — {report_date.strftime('%d %b %Y')}"}})
     blocks.append({"type": "context", "elements": [{"type": "mrkdwn",
-        "text": "Brindco Alpha Capital  ◆  _a daily note from the quant desk_"}]})
+        "text": "RAAS Research Capital  ◆  _a daily note from the quant desk_"}]})
     blocks.append(_slack_s(f"_{date_str}_"))
     blocks.append({"type": "divider"})
 
