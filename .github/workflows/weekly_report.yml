@@ -87,7 +87,7 @@ jobs:
           SMTP_USER:                  ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD:              ${{ secrets.SMTP_PASSWORD }}
           REPORT_RECIPIENTS:          ${{ secrets.REPORT_RECIPIENTS }}
-          REPORT_WEEKLY_SENDER_NAME:  ${{ vars.REPORT_WEEKLY_SENDER_NAME || 'BAC Weekly Deals' }}
+          REPORT_WEEKLY_SENDER_NAME:  ${{ vars.REPORT_WEEKLY_SENDER_NAME || 'RAAS Weekly Deals' }}
         run: |
           if [ -n "${{ github.event.inputs.week_of }}" ]; then
             python -m reports.weekly_deals_report --week-of "${{ github.event.inputs.week_of }}"

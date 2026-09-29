@@ -68,7 +68,7 @@ def send_ops_log(report: str, status: str, headline: str, details: list[str] | N
     user = os.environ.get("SMTP_USER")
     password = os.environ.get("SMTP_PASSWORD")
     now = datetime.now(_IST)
-    subject = f"[BAC ops] {report}: {status} — {now:%a %d %b %H:%M} IST"
+    subject = f"[RAAS ops] {report}: {status} — {now:%a %d %b %H:%M} IST"
     if not user or not password:
         logger.warning("Ops log not sent (no SMTP credentials): %s — %s", subject, headline)
         return False
@@ -92,7 +92,7 @@ def send_ops_log(report: str, status: str, headline: str, details: list[str] | N
 
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = f"BAC Pipeline Log <{user}>"
+    msg["From"] = f"RAAS Pipeline Log <{user}>"
     msg["To"] = OPS_LOG_RECIPIENT
     msg.set_content("\n".join([f"{status} — {report}", headline, *lines]))
     msg.add_alternative(html, subtype="html")

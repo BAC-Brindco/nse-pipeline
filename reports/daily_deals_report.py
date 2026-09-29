@@ -25,10 +25,10 @@ Env vars required:
   SMTP_PASSWORD       — Google app-specific password for SMTP_USER
   REPORT_RECIPIENTS   — comma-separated, but in practice ONE address:
                         bac-reports@brindco.com, the Google Group that is the
-                        single recipient list shared by all three BAC daily
+                        single recipient list shared by all three RAAS daily
                         reports. Readers are added in Google Workspace, not by
                         editing this secret in three repositories.
-  REPORT_SENDER_NAME  — optional, defaults to "BAC Daily Deals"
+  REPORT_SENDER_NAME  — optional, defaults to "RAAS Daily Deals"
 
 Optional:
   REPORT_FOCUS_TOP_N  — how many companies the email body covers (default 10)
@@ -68,7 +68,7 @@ EDITION_FULL = "full"
 EDITION_FOCUS = "focus"
 
 # ─── Palette ──────────────────────────────────────────────────────────────────
-# Sourced from reports/design.py, which carries the BAC house style transcribed
+# Sourced from reports/design.py, which carries the RAAS house style transcribed
 # from the morning brief. No colour literal belongs in this file: the whole point
 # of the shared module is that deals amber and morning-brief amber are the same
 # hex by construction. These are local aliases for brevity only.
@@ -1039,7 +1039,7 @@ def _derive(
     }
 
 
-# ─── Presentation (BAC house style — see reports/design.py) ──────────────────
+# ─── Presentation (RAAS house style — see reports/design.py) ──────────────────
 
 def _bar_chart(top: pd.DataFrame) -> str:
     """Horizontal bars built from table cells — no image, no CSS bar.
@@ -1856,7 +1856,7 @@ def _build_slack_blocks(
 def _send_slack(webhook_url: str, blocks: list[dict], report_date: date) -> None:
     import json
     payload = json.dumps({
-        "text": f"BAC Daily Deals — NSE — {report_date.strftime('%d %b %Y')}",
+        "text": f"RAAS Daily Deals — NSE — {report_date.strftime('%d %b %Y')}",
         "blocks": blocks,
     }).encode("utf-8")
     req = urllib.request.Request(
@@ -1904,12 +1904,12 @@ def main(
             for r in os.environ.get("REPORT_RECIPIENTS", "parv.bangar@brindco.com").split(",")
             if r.strip()
         ]
-        sender_name = os.environ.get("REPORT_SENDER_NAME", "BAC Daily Deals")
+        sender_name = os.environ.get("REPORT_SENDER_NAME", "RAAS Daily Deals")
     elif not dry_run:
         smtp_user     = _env("SMTP_USER")
         smtp_password = _env("SMTP_PASSWORD")
         recipients    = [r.strip() for r in _env("REPORT_RECIPIENTS").split(",") if r.strip()]
-        sender_name   = os.environ.get("REPORT_SENDER_NAME", "BAC Daily Deals")
+        sender_name   = os.environ.get("REPORT_SENDER_NAME", "RAAS Daily Deals")
 
     # ── Decide what this run is for (see "Run plan" above) ───────────────────
     action, main_row, check_type = "send", None, None
@@ -2082,7 +2082,7 @@ def main(
         pretty_date = report_date.strftime("%d %b %Y")
         # The subject is the only part guaranteed to be seen, so the warning
         # goes there too -- a body banner is missable on a phone preview.
-        subject = f"BAC Daily Deals — NSE — {pretty_date}"
+        subject = f"RAAS Daily Deals — NSE — {pretty_date}"
         if update_card:
             subject = f"[UPDATED {datetime.now(_IST):%H:%M} IST] {subject}"
         if degraded:
@@ -2204,7 +2204,7 @@ def main(
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Generate BAC Daily Deals NSE report")
+    parser = argparse.ArgumentParser(description="Generate RAAS Daily Deals NSE report")
     parser.add_argument("--date", help="Override report date (YYYY-MM-DD)")
     parser.add_argument("--preview", metavar="PATH",
                         help="Write previews instead of emailing (no DB slot needed). "

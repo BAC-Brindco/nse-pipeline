@@ -45,7 +45,7 @@ Env vars required:
                         by editing this secret.
 
 Optional:
-  REPORT_WEEKLY_SENDER_NAME     — defaults to "BAC Weekly Deals"
+  REPORT_WEEKLY_SENDER_NAME     — defaults to "RAAS Weekly Deals"
   REPORT_WEEKLY_FOCUS_TOP_N     — companies the body covers (default 10)
   REPORT_WEEKLY_LOOKBACK_WEEKS  — first-appearance lookback (default 4)
 """
@@ -2800,19 +2800,19 @@ def main(
                 "REPORT_RECIPIENTS", "parv.bangar@brindco.com").split(",")
             if r.strip()
         ]
-        sender_name = os.environ.get("REPORT_WEEKLY_SENDER_NAME", "BAC Weekly Deals")
+        sender_name = os.environ.get("REPORT_WEEKLY_SENDER_NAME", "RAAS Weekly Deals")
     elif not dry_run:
         smtp_user     = _env("SMTP_USER")
         smtp_password = _env("SMTP_PASSWORD")
         recipients    = [r.strip() for r in _env("REPORT_RECIPIENTS").split(",") if r.strip()]
-        sender_name   = os.environ.get("REPORT_WEEKLY_SENDER_NAME", "BAC Weekly Deals")
+        sender_name   = os.environ.get("REPORT_WEEKLY_SENDER_NAME", "RAAS Weekly Deals")
 
         # Claimed on the week's last trading day, so a Saturday and a Sunday
         # retry contend for one slot.
         if not _claim_slot(end, recipients):
             return 0
     else:
-        smtp_user, recipients, sender_name = "", [], "BAC Weekly Deals"
+        smtp_user, recipients, sender_name = "", [], "RAAS Weekly Deals"
 
     try:
         generated_at = datetime.now(timezone.utc)
@@ -2935,7 +2935,7 @@ def main(
 
         # The subject is the only part guaranteed to be seen, so the warning
         # goes there too: a body banner is missable on a phone preview.
-        subject = f"BAC Weekly Deals — NSE — {_plain_range(start, end)}"
+        subject = f"RAAS Weekly Deals — NSE — {_plain_range(start, end)}"
         if degraded or missing:
             subject = f"[WEEK INCOMPLETE] {subject}"
 
@@ -2996,7 +2996,7 @@ def main(
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(
-        description="Generate BAC Weekly Deals NSE report",
+        description="Generate RAAS Weekly Deals NSE report",
     )
     parser.add_argument(
         "--week-of", metavar="YYYY-MM-DD",
