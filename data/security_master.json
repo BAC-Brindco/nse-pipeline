@@ -1,8 +1,8 @@
 {
  "_meta": {
-  "generated_at": "2026-10-17T22:30:13+00:00",
-  "symbols": 1883,
-  "with_market_cap": 1423,
+  "generated_at": "2026-10-24T22:37:01+00:00",
+  "symbols": 1884,
+  "with_market_cap": 1416,
   "nifty50": 50,
   "nifty100": 50,
   "nifty500": 401,
@@ -46,10 +46,10 @@
    "mcap_source": "screener.in"
   },
   "AAATECH": {
-   "mcap_cr": 112.0,
-   "cmp": 87.0,
-   "shares": 12873563,
-   "as_of": "2026-09-20",
+   "mcap_cr": 131.0,
+   "cmp": 102.0,
+   "shares": 12843137,
+   "as_of": "2026-10-25",
    "mcap_source": "screener.in"
   },
   "AADHARHFC": {
@@ -572,10 +572,10 @@
    "checked": "2026-10-11"
   },
   "AGARWALEYE": {
-   "mcap_cr": 15866.0,
-   "cmp": 500.0,
-   "shares": 317320000,
-   "as_of": "2026-09-20",
+   "mcap_cr": 15025.0,
+   "cmp": 474.0,
+   "shares": 316983122,
+   "as_of": "2026-10-25",
    "mcap_source": "screener.in"
   },
   "AGARWALTUF": {
@@ -622,7 +622,7 @@
    "mcap_cr": 14.1,
    "cmp": 25.8,
    "shares": 5465116,
-   "as_of": "2026-09-20",
+   "as_of": "2026-10-25",
    "mcap_source": "screener.in"
   },
   "AHLUCONT": {
@@ -902,10 +902,10 @@
    "tier": "NIFTY500"
   },
   "ANAWIL": {
-   "mcap_cr": 1113.0,
-   "cmp": 445.0,
-   "shares": 25011236,
-   "as_of": "2026-09-20",
+   "mcap_cr": 974.0,
+   "cmp": 390.0,
+   "shares": 24974359,
+   "as_of": "2026-10-25",
    "mcap_source": "screener.in"
   },
   "ANDHRAPAP": {
@@ -917,11 +917,12 @@
    "checked": "2026-10-18"
   },
   "ANDHRSUGAR": {
-   "mcap_cr": 1275.0,
+   "mcap_cr": null,
    "cmp": 94.1,
    "shares": 135494155,
    "as_of": "2026-09-20",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-10-25"
   },
   "ANGELONE": {
    "name": "Angel One Ltd.",
@@ -1040,11 +1041,12 @@
    "tier": "NIFTY500"
   },
   "APEX": {
-   "mcap_cr": 1079.0,
+   "mcap_cr": null,
    "cmp": 345.0,
    "shares": 31275362,
    "as_of": "2026-09-20",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-10-25"
   },
   "APLAPOLLO": {
    "name": "APL Apollo Tubes Ltd.",
@@ -1129,18 +1131,20 @@
    "checked": "2026-10-11"
   },
   "ARCIL": {
-   "mcap_cr": 4431.0,
+   "mcap_cr": null,
    "cmp": 136.0,
    "shares": 325808824,
    "as_of": "2026-09-20",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-10-25"
   },
   "ARDEE": {
-   "mcap_cr": 1553.0,
+   "mcap_cr": null,
    "cmp": 49.3,
    "shares": 315010142,
    "as_of": "2026-09-20",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-10-25"
   },
   "ARE&M": {
    "name": "Amara Raja Energy & Mobility Ltd.",
@@ -1427,11 +1431,12 @@
    "mcap_source": "screener.in"
   },
   "ASTRAZEN": {
-   "mcap_cr": 16879.0,
+   "mcap_cr": null,
    "cmp": 6752.0,
    "shares": 24998519,
    "as_of": "2026-09-20",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-10-25"
   },
   "ATALREAL": {
    "mcap_cr": null,
@@ -1620,18 +1625,20 @@
    "checked": "2026-10-18"
   },
   "AWFIS": {
-   "mcap_cr": 1973.0,
+   "mcap_cr": null,
    "cmp": 276.0,
    "shares": 71485507,
    "as_of": "2026-09-20",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-10-25"
   },
   "AWHCL": {
-   "mcap_cr": 1036.0,
+   "mcap_cr": null,
    "cmp": 365.0,
    "shares": 28383562,
    "as_of": "2026-09-20",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-10-25"
   },
   "AWL": {
    "name": "AWL Agri Business Ltd.",
@@ -1898,7 +1905,7 @@
   },
   "BANKADD": {
    "mcap_cr": null,
-   "checked": "2026-09-13",
+   "checked": "2026-10-25",
    "mcap_source": "screener.in:not_found"
   },
   "BANKBARODA": {
@@ -1913,12 +1920,12 @@
   },
   "BANKBEES": {
    "mcap_cr": null,
-   "checked": "2026-09-13",
+   "checked": "2026-10-25",
    "mcap_source": "screener.in:not_found"
   },
   "BANKIETF": {
    "mcap_cr": null,
-   "checked": "2026-09-13",
+   "checked": "2026-10-25",
    "mcap_source": "screener.in:not_found"
   },
   "BANKINDIA": {
@@ -1934,7 +1941,7 @@
   },
   "BANKNIFTY1": {
    "mcap_cr": null,
-   "checked": "2026-09-13",
+   "checked": "2026-10-25",
    "mcap_source": "screener.in:not_found"
   },
   "BANSALWIRE": {
@@ -1996,7 +2003,7 @@
   },
   "BBNPNBETF": {
    "mcap_cr": null,
-   "checked": "2026-09-13",
+   "checked": "2026-10-25",
    "mcap_source": "screener.in:not_found"
   },
   "BBOX": {
@@ -6149,6 +6156,11 @@
    "mcap_source": "screener.in",
    "tier": "NIFTY500"
   },
+  "ICICILIFE": {
+   "tier": "NIFTY500",
+   "name": "ICICI Life Insurance Ltd.",
+   "isin": "INE726G01019"
+  },
   "ICICIPRULI": {
    "name": "ICICI Prudential Life Insurance Company Ltd.",
    "isin": "INE726G01019",
@@ -6156,8 +6168,7 @@
    "cmp": 495.0,
    "shares": 1449717172,
    "as_of": "2026-09-06",
-   "mcap_source": "screener.in",
-   "tier": "NIFTY500"
+   "mcap_source": "screener.in"
   },
   "ICIL": {
    "mcap_cr": 8908.0,
