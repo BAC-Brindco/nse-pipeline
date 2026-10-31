@@ -1,8 +1,8 @@
 {
  "_meta": {
-  "generated_at": "2026-10-24T22:37:01+00:00",
-  "symbols": 1884,
-  "with_market_cap": 1416,
+  "generated_at": "2026-10-31T23:31:25+00:00",
+  "symbols": 1888,
+  "with_market_cap": 1406,
   "nifty50": 50,
   "nifty100": 50,
   "nifty500": 401,
@@ -305,10 +305,10 @@
    "mcap_source": "screener.in:not_found"
   },
   "ACI": {
-   "mcap_cr": 5957.0,
-   "cmp": 483.0,
-   "shares": 123333333,
-   "as_of": "2026-09-27",
+   "mcap_cr": 5460.0,
+   "cmp": 442.0,
+   "shares": 123529412,
+   "as_of": "2026-11-01",
    "mcap_source": "screener.in"
   },
   "ACMESOLAR": {
@@ -449,10 +449,10 @@
    "checked": "2026-10-11"
   },
   "ADVENZYMES": {
-   "mcap_cr": 3260.0,
-   "cmp": 291.0,
-   "shares": 112027491,
-   "as_of": "2026-09-27",
+   "mcap_cr": 2951.0,
+   "cmp": 264.0,
+   "shares": 111780303,
+   "as_of": "2026-11-01",
    "mcap_source": "screener.in"
   },
   "AEGISLOG": {
@@ -610,6 +610,13 @@
    "mcap_source": "screener.in:not_found",
    "checked": "2026-10-11"
   },
+  "AGUL": {
+   "mcap_cr": 28.4,
+   "cmp": 51.8,
+   "shares": 5482625,
+   "as_of": "2026-11-01",
+   "mcap_source": "screener.in"
+  },
   "AHCL": {
    "mcap_cr": null,
    "cmp": 15.7,
@@ -682,10 +689,10 @@
    "tier": "NIFTY500"
   },
   "AJAXENGG": {
-   "mcap_cr": 6953.0,
-   "cmp": 608.0,
-   "shares": 114358553,
-   "as_of": "2026-09-27",
+   "mcap_cr": 6127.0,
+   "cmp": 536.0,
+   "shares": 114309701,
+   "as_of": "2026-11-01",
    "mcap_source": "screener.in"
   },
   "AJOONI": {
@@ -828,10 +835,10 @@
    "checked": "2026-10-11"
   },
   "AMBANIORGO": {
-   "mcap_cr": 99.3,
-   "cmp": 115.0,
-   "shares": 8634783,
-   "as_of": "2026-09-27",
+   "mcap_cr": 148.0,
+   "cmp": 171.0,
+   "shares": 8654971,
+   "as_of": "2026-11-01",
    "mcap_source": "screener.in"
   },
   "AMBER": {
@@ -866,11 +873,12 @@
    "mcap_source": "screener.in:not_found"
   },
   "AMRUTANJAN": {
-   "mcap_cr": 1464.0,
+   "mcap_cr": null,
    "cmp": 506.0,
    "shares": 28932806,
    "as_of": "2026-09-27",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-11-01"
   },
   "ANANDRATHI": {
    "name": "Anand Rathi Wealth Ltd.",
@@ -884,11 +892,12 @@
    "tier": "NIFTY500"
   },
   "ANANTAM": {
-   "mcap_cr": 2282.0,
+   "mcap_cr": null,
    "cmp": 105.0,
    "shares": 217333333,
    "as_of": "2026-09-27",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-11-01"
   },
   "ANANTRAJ": {
    "name": "Anant Raj Ltd.",
@@ -1019,7 +1028,7 @@
   },
   "AONENIFTY": {
    "mcap_cr": null,
-   "checked": "2026-09-27",
+   "checked": "2026-11-01",
    "mcap_source": "screener.in:not_found"
   },
   "AONESTEELS": {
@@ -1181,10 +1190,10 @@
    "checked": "2026-10-11"
   },
   "ARIHANTCAP": {
-   "mcap_cr": 1023.0,
-   "cmp": 93.3,
-   "shares": 109646302,
-   "as_of": "2026-09-27",
+   "mcap_cr": 935.0,
+   "cmp": 85.3,
+   "shares": 109613130,
+   "as_of": "2026-11-01",
    "mcap_source": "screener.in"
   },
   "ARIHANTSUP": {
@@ -1246,11 +1255,12 @@
    "mcap_source": "screener.in"
   },
   "ARTEMISMED": {
-   "mcap_cr": 5663.0,
+   "mcap_cr": null,
    "cmp": 358.0,
    "shares": 158184358,
    "as_of": "2026-09-27",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-11-01"
   },
   "ARUNAYA": {
    "mcap_cr": null,
@@ -1387,11 +1397,12 @@
    "checked": "2026-10-11"
   },
   "ASPIRE": {
-   "mcap_cr": 21.0,
+   "mcap_cr": null,
    "cmp": 13.8,
    "shares": 15217391,
    "as_of": "2026-09-27",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-11-01"
   },
   "ASTEC": {
    "mcap_cr": null,
@@ -1537,12 +1548,18 @@
    "checked": "2026-10-18",
    "mcap_source": "screener.in:not_found"
   },
+  "AUSL": {
+   "mcap_cr": null,
+   "checked": "2026-11-01",
+   "mcap_source": "screener.in:not_found"
+  },
   "AUSTENG": {
-   "mcap_cr": 56.3,
+   "mcap_cr": null,
    "cmp": 162.0,
    "shares": 3475309,
    "as_of": "2026-09-27",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-11-01"
   },
   "AUTOBEES": {
    "mcap_cr": null,
@@ -1652,11 +1669,12 @@
    "tier": "NIFTY500"
   },
   "AXIOMGAS": {
-   "mcap_cr": 191.0,
+   "mcap_cr": null,
    "cmp": 54.0,
    "shares": 35370370,
    "as_of": "2026-09-27",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-11-01"
   },
   "AXISBANK": {
    "name": "Axis Bank Ltd.",
@@ -2027,11 +2045,12 @@
    "checked": "2026-10-11"
   },
   "BCG": {
-   "mcap_cr": 2070.0,
+   "mcap_cr": null,
    "cmp": 10.3,
    "shares": 2009708738,
    "as_of": "2026-09-20",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-11-01"
   },
   "BCLIND": {
    "mcap_cr": null,
@@ -2069,6 +2088,11 @@
    "mcap_source": "screener.in:not_found",
    "checked": "2026-10-11",
    "tier": "NIFTY50"
+  },
+  "BELDING": {
+   "mcap_cr": null,
+   "checked": "2026-11-01",
+   "mcap_source": "screener.in:not_found"
   },
   "BELRISE": {
    "name": "Belrise Industries Ltd.",
@@ -2111,11 +2135,12 @@
    "tier": "NIFTY500"
   },
   "BESTAGRO": {
-   "mcap_cr": 676.0,
+   "mcap_cr": null,
    "cmp": 19.0,
    "shares": 355789474,
    "as_of": "2026-09-13",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-11-01"
   },
   "BFINVEST": {
    "mcap_cr": null,
@@ -2124,6 +2149,11 @@
    "as_of": "2026-09-06",
    "mcap_source": "screener.in:not_found",
    "checked": "2026-10-11"
+  },
+  "BFSI": {
+   "mcap_cr": null,
+   "checked": "2026-11-01",
+   "mcap_source": "screener.in:not_found"
   },
   "BFUTILITIE": {
    "mcap_cr": null,
@@ -2142,11 +2172,12 @@
    "checked": "2026-10-11"
   },
   "BHADORA": {
-   "mcap_cr": 229.0,
+   "mcap_cr": null,
    "cmp": 123.0,
    "shares": 18617886,
    "as_of": "2026-09-20",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-11-01"
   },
   "BHARATCOAL": {
    "mcap_cr": null,
@@ -2227,11 +2258,12 @@
    "tier": "NIFTY500"
   },
   "BI": {
-   "mcap_cr": 237.0,
+   "mcap_cr": null,
    "cmp": 101.0,
    "shares": 23465347,
    "as_of": "2026-09-27",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-11-01"
   },
   "BIKAJI": {
    "name": "Bikaji Foods International Ltd.",
@@ -2244,11 +2276,12 @@
    "checked": "2026-10-11"
   },
   "BIKEWO": {
-   "mcap_cr": 136.0,
+   "mcap_cr": null,
    "cmp": 104.0,
    "shares": 13076923,
    "as_of": "2026-09-13",
-   "mcap_source": "screener.in"
+   "mcap_source": "screener.in:not_found",
+   "checked": "2026-11-01"
   },
   "BIOCON": {
    "name": "Biocon Ltd.",
@@ -6157,9 +6190,9 @@
    "tier": "NIFTY500"
   },
   "ICICILIFE": {
-   "tier": "NIFTY500",
    "name": "ICICI Life Insurance Ltd.",
-   "isin": "INE726G01019"
+   "isin": "INE726G01019",
+   "tier": "NIFTY500"
   },
   "ICICIPRULI": {
    "name": "ICICI Prudential Life Insurance Company Ltd.",
